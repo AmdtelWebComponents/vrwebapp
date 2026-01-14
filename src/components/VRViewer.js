@@ -22,10 +22,10 @@ export async function initVRViewer(container) {
   const dracoLoader = new DRACOLoader();
   
   // Option 1: Use node_modules path (recommended for Astro/Vite builds)
-  dracoLoader.setDecoderPath('/node_modules/three/examples/jsm/libs/draco/gltf/');
+  // dracoLoader.setDecoderPath('/node_modules/three/examples/jsm/libs/draco/gltf/');
   
   // Option 2: If the above 404s in production, copy the draco folder to public/draco/ and use:
-  // dracoLoader.setDecoderPath('/draco/');  // or process.env.PUBLIC_URL + '/draco/' if needed
+  dracoLoader.setDecoderPath('/draco/');  // or process.env.PUBLIC_URL + '/draco/' if needed
   
   dracoLoader.setDecoderConfig({ type: 'js' });  // 'js' is reliable; 'wasm' is faster but needs extra setup
   
