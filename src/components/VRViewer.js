@@ -13,7 +13,7 @@ export async function initVRViewer(container) {
   container.appendChild(renderer.domElement);
 
   // Lights, model loading, etc. (as before)
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
   directionalLight.position.set(5, 10, 7.5);
   scene.add(directionalLight);
@@ -34,7 +34,7 @@ export async function initVRViewer(container) {
   const loader = new GLTFLoader();
   loader.setDRACOLoader(dracoLoader);
 
-  loader.load('/models/kellyburn.glb', (gltf) => {
+  loader.load('/models/kellyburn_Room_Livingroom.glb', (gltf) => {
     scene.add(gltf.scene);
     console.log('Model loaded successfully');
     // Optional: Center/scale model if needed
@@ -71,7 +71,7 @@ export async function initVRViewer(container) {
         info.style.bottom = '10px';
         info.style.left = '10px';
         info.style.color = 'white';
-        info.style.background = 'rgba(0,0,0,0.5)';
+        info.style.background = 'rgb(255, 255, 255)';
         info.style.padding = '8px';
         info.style.borderRadius = '4px';
         container.appendChild(info);
