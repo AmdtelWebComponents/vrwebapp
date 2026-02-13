@@ -44,9 +44,9 @@ export async function initVRViewer(container) {
     model.position.sub(center);
 
     // Position camera inside at eye height, looking toward bay window
-    camera.position.set(0, 1.6, 0);           // eye level, roughly center
+    camera.position.set(0, 0.6, -2);           // eye level, roughly center
     // Look forward along +Z; adjust vector to point at bay window
-    controls.target.set(0, 1.6, 5);           // look +Z direction
+    controls.target.set(0, 1, 5);           // look +Z direction
     // Alternative: if bay is on -Z, +X, etc.:
     // controls.target.set(0, 1.6, -5);       // look -Z
     // controls.target.set(5, 1.6, 0);        // look +X
