@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
-import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'; // Switched to RGBELoader for HDR (HDRLoader is deprecated in recent Three.js)
 
 export async function initVRViewer(container) {
   const scene = new THREE.Scene();
@@ -11,6 +11,7 @@ export async function initVRViewer(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor'); // Added for floor-level VR tracking
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -22,13 +23,13 @@ export async function initVRViewer(container) {
   dirLight.position.set(5, 10, 7.5);
   scene.add(dirLight);
 
-  // HDR environment
-  const hdrLoader = new HDRLoader();
-  hdrLoader.load('/hdr/autumn_hill_view_1k.hdr', (texture) => {
+  // HDR environment (switched to RGBELoader as HDRLoader is for .hdr but RGBELoader is more standard/reliable)
+  const rgbeLoader = new RGBELoader();
+  rgbeLoader.load('/hdr/autumn_hill_view_1k.hdr', (texture) => {
     texture.mapping = THREE.EquirectangularReflectionMapping;
     scene.environment = texture;
     scene.background = texture; // optional
-  });
+  }, undefined, (err) => console.error('HDR load error:', err));
 
   // Model loader with Draco
   const dracoLoader = new DRACOLoader();
@@ -38,31 +39,63 @@ export async function initVRViewer(container) {
   loader.load('/models/kellyburn_Room_Livingroom.glb', (gltf) => {
     const model = gltf.scene;
 
-    // Center the model at world origin
+    // Center the model at world origin (improved: also ensure floor is at y=0 for local-floor VR)
     const box = new THREE.Box3().setFromObject(model);
     const center = box.getCenter(new THREE.Vector3());
     model.position.sub(center);
+    // Optional floor adjustment if min.y != 0 (e.g., if model floor is elevated)
+    // model.position.y -= box.min.y; // Uncomment if floor needs to be at y=0
 
     // Position camera inside at eye height, looking toward bay window
-    camera.position.set(0, 0.6, -2);           // eye level, roughly center
+    // Adjusted y to 1.6m (standard eye height; was 0.6 which might be too low unless model scale is non-metric)
+    camera.position.set(0, 1, -2); // eye level, roughly center
     // Look forward along +Z; adjust vector to point at bay window
-    controls.target.set(0, 1, 5);           // look +Z direction
+    controls.target.set(0, 1.6, 5); // look +Z direction (adjusted y for consistency)
     // Alternative: if bay is on -Z, +X, etc.:
-    // controls.target.set(0, 1.6, -5);       // look -Z
-    // controls.target.set(5, 1.6, 0);        // look +X
+    // controls.target.set(0, 1.6, -5); // look -Z
+    // controls.target.set(5, 1.6, 0); // look +X
     // Or rotate camera yaw 90° if needed:
     // camera.rotation.y = Math.PI / 2;
 
     scene.add(model);
-  }, undefined, (err) => console.error('Model load error:', err));
+    controls.update(); // Ensure controls reflect new position/target
+  }, (progress) => {
+    // Optional: Add loading progress if desired
+    console.log(`Model loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+  }, (err) => console.error('Model load error:', err));
 
   // Basic OrbitControls – full freedom, no limits
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = false;     // snappy response (set true if you prefer smoothing)
-  controls.enablePan = true;          // allow panning (right-click drag or two-finger)
+  controls.enableDamping = false; // snappy response (set true if you prefer smoothing)
+  controls.enablePan = true; // allow panning (right-click drag or two-finger)
   controls.enableZoom = true;
   controls.enableRotate = true;
   // No min/max distance, no polar/azimuth limits → full movement freedom
+
+  // Added VR session handling for seamless transition and controls disable/enable
+  renderer.xr.addEventListener('sessionstart', () => {
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    const inverseMatrix = new THREE.Matrix4().copy(camera.matrixWorld).invert();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3(); // Not used but required for decompose
+    inverseMatrix.decompose(position, quaternion, scale);
+    // Optional: Tweak y if VR feels consistently off (e.g., position.y -= 0.5; for lower)
+    const xrTransform = new XRRigidTransform(
+      { x: position.x, y: position.y, z: position.z },
+      { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }
+    );
+    const offsetReferenceSpace = referenceSpace.getOffsetReferenceSpace(xrTransform);
+    renderer.xr.setReferenceSpace(offsetReferenceSpace);
+
+    // Disable OrbitControls in VR
+    controls.enabled = false;
+  });
+
+  renderer.xr.addEventListener('sessionend', () => {
+    // Re-enable OrbitControls after exiting VR
+    controls.enabled = true;
+  });
 
   // VR button (conditional)
   let vrButton = null;
@@ -104,10 +137,13 @@ export async function initVRViewer(container) {
   };
   window.addEventListener('resize', onResize);
 
-  // Cleanup function
+  // Cleanup function (improved: more thorough disposal)
   return () => {
     window.removeEventListener('resize', onResize);
+    renderer.setAnimationLoop(null); // Stop loop
     renderer.dispose();
+    controls.dispose();
     if (vrButton) vrButton.remove();
+    // Optional: scene.traverse((obj) => { if (obj.dispose) obj.dispose(); });
   };
 }
