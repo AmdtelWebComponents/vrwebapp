@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'; // Switched to RGBELoader for HDR (HDRLoader is deprecated in recent Three.js)
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'; // Switched to HDRLoader for HDR (HDRLoader is deprecated in recent Three.js)
 
 export async function initVRViewer(container) {
   const scene = new THREE.Scene();
@@ -23,9 +23,9 @@ export async function initVRViewer(container) {
   dirLight.position.set(5, 10, 7.5);
   scene.add(dirLight);
 
-  // HDR environment (switched to RGBELoader as HDRLoader is for .hdr but RGBELoader is more standard/reliable)
-  const rgbeLoader = new RGBELoader();
-  rgbeLoader.load('/hdr/autumn_hill_view_1k.hdr', (texture) => {
+  // HDR environment (switched to HDRLoader as RGBLoader is depricated and HDRLoader is more standard/reliable)
+  const hdrLoader = new HDRLoader();
+  hdrLoader.load('/hdr/autumn_hill_view_1k.hdr', (texture) => {
     texture.mapping = THREE.EquirectangularReflectionMapping;
     scene.environment = texture;
     scene.background = texture; // optional
@@ -39,16 +39,21 @@ export async function initVRViewer(container) {
   loader.load('/models/kellyburn_Room_Livingroom.glb', (gltf) => {
     const model = gltf.scene;
 
+    // Scale model to metres if exported in centimetres
+    model.scale.setScalar(10);
+
     // Center the model at world origin (improved: also ensure floor is at y=0 for local-floor VR)
     const box = new THREE.Box3().setFromObject(model);
     const center = box.getCenter(new THREE.Vector3());
     model.position.sub(center);
     // Optional floor adjustment if min.y != 0 (e.g., if model floor is elevated)
-    // model.position.y -= box.min.y; // Uncomment if floor needs to be at y=0
+    model.position.x = -center.x;
+    model.position.z = -center.z;
+    model.position.y -= box.min.y; // Uncomment if floor needs to be at y=0
 
     // Position camera inside at eye height, looking toward bay window
     // Adjusted y to 1.6m (standard eye height; was 0.6 which might be too low unless model scale is non-metric)
-    camera.position.set(0, 1, -2); // eye level, roughly center
+    camera.position.set(0, 1.6, -2); // eye level, roughly center
     // Look forward along +Z; adjust vector to point at bay window
     controls.target.set(0, 1.6, 5); // look +Z direction (adjusted y for consistency)
     // Alternative: if bay is on -Z, +X, etc.:
@@ -75,21 +80,16 @@ export async function initVRViewer(container) {
   // Added VR session handling for seamless transition and controls disable/enable
   renderer.xr.addEventListener('sessionstart', () => {
     const referenceSpace = renderer.xr.getReferenceSpace();
-    const inverseMatrix = new THREE.Matrix4().copy(camera.matrixWorld).invert();
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3(); // Not used but required for decompose
-    inverseMatrix.decompose(position, quaternion, scale);
-    // Optional: Tweak y if VR feels consistently off (e.g., position.y -= 0.5; for lower)
+    
     const xrTransform = new XRRigidTransform(
-      { x: position.x, y: position.y, z: position.z },
-      { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0, w: 1 }
     );
     const offsetReferenceSpace = referenceSpace.getOffsetReferenceSpace(xrTransform);
     renderer.xr.setReferenceSpace(offsetReferenceSpace);
 
     // Disable OrbitControls in VR
-    controls.enabled = false;
+    controls.enabled = true;
   });
 
   renderer.xr.addEventListener('sessionend', () => {
