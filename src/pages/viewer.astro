@@ -1,0 +1,237 @@
+---
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>VR Viewer | VR House</title>
+    <style>
+      :root {
+        --panel: rgba(18, 23, 32, 0.76);
+        --panel-border: rgba(255, 255, 255, 0.14);
+        --text: #f6f5ef;
+        --muted: #d7d4c4;
+        --action: #db7f2a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: 'Sora', 'Segoe UI', sans-serif;
+        color: var(--text);
+        background: #10141a;
+      }
+
+      #canvas-container {
+        width: 100%;
+        height: 100vh;
+        position: relative;
+      }
+
+      .topbar {
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 20;
+        border-radius: 12px;
+        border: 1px solid var(--panel-border);
+        background: var(--panel);
+        backdrop-filter: blur(5px);
+        overflow: hidden;
+      }
+
+      /* Toggle button always visible */
+      .topbar-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+        padding: 0.55rem 0.75rem;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font: 600 0.9rem/1 inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .topbar-toggle svg {
+        flex-shrink: 0;
+        transition: transform 200ms ease;
+      }
+
+      .topbar[data-open="false"] .topbar-toggle svg {
+        transform: rotate(-90deg);
+      }
+
+      /* Collapsible body */
+      .topbar-body {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        align-items: center;
+        padding: 0 0.55rem 0.55rem;
+      }
+
+      .topbar[data-open="false"] .topbar-body {
+        display: none;
+      }
+
+      .topbar a,
+      .topbar select,
+      .topbar button.action {
+        border: 0;
+        border-radius: 999px;
+        font: inherit;
+        line-height: 1;
+      }
+
+      .topbar a {
+        padding: 0.6rem 0.8rem;
+        background: #2a3442;
+        color: var(--text);
+        text-decoration: none;
+      }
+
+      .topbar select {
+        min-width: 190px;
+        padding: 0.62rem 0.8rem;
+        background: #f7f0db;
+        color: #1a1f27;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 0.9rem;
+        padding-inline: 0.35rem;
+      }
+
+      button.action {
+        display: inline-block;
+        padding: 0.6rem 0.8rem;
+        background: var(--action);
+        color: #fff;
+        cursor: pointer;
+      }
+
+      #vr-btn { display: none; }
+
+      @media (max-width: 640px) {
+        .topbar {
+          right: 0.75rem;
+        }
+
+        .topbar select {
+          min-width: 160px;
+          flex: 1;
+        }
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="canvas-container">
+      <div class="topbar" data-open="true">
+        <button class="topbar-toggle" id="topbar-toggle" aria-expanded="true" aria-controls="topbar-body">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M2 4l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Rooms
+        </button>
+        <div class="topbar-body" id="topbar-body">
+          <a href="/">All Rooms</a>
+          <select id="room-select" aria-label="Room selector"></select>
+          <button class="action" id="vr-btn">Enter VR</button>
+          <span class="status" id="status">Loading room…</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      import { initVRViewer } from '../components/VRViewer.js';
+      import { rooms } from '../lib/rooms.js';
+
+      const container = document.getElementById('canvas-container') as HTMLDivElement;
+      const roomSelect = document.getElementById('room-select') as HTMLSelectElement;
+      const status = document.getElementById('status') as HTMLElement;
+      const vrBtn = document.getElementById('vr-btn') as HTMLButtonElement;
+      const topbar = document.querySelector('.topbar') as HTMLElement;
+      const toggle = document.getElementById('topbar-toggle') as HTMLButtonElement;
+
+      toggle.addEventListener('click', () => {
+        const open = topbar.dataset.open === 'true';
+        topbar.dataset.open = String(!open);
+        toggle.setAttribute('aria-expanded', String(!open));
+      });
+
+      function getRoomFromUrl() {
+        const roomId = new URL(window.location.href).searchParams.get('room');
+        return rooms.find((room) => room.id === roomId) || rooms[0];
+      }
+
+      function writeUrl(roomId: string) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('room', roomId);
+        window.history.replaceState({}, '', url);
+      }
+
+      for (const room of rooms) {
+        const option = document.createElement('option');
+        option.value = room.id;
+        option.textContent = room.isMock ? `${room.name} (mock)` : room.name;
+        roomSelect.appendChild(option);
+      }
+
+      let viewer;
+      let activeRoom = getRoomFromUrl();
+      roomSelect.value = activeRoom.id;
+
+      status.textContent = `Loading ${activeRoom.name}...`;
+      viewer = await initVRViewer(container, {
+        initialRoom: activeRoom,
+        onRoomChange(room: (typeof rooms)[number]) {
+          activeRoom = room;
+          roomSelect.value = room.id;
+          status.textContent = room.isMock
+            ? `${room.name} loaded (mock model)`
+            : `${room.name} loaded`;
+        }
+      });
+
+      if (viewer.isVRSupported()) {
+        vrBtn.style.display = 'inline-block';
+        vrBtn.addEventListener('click', () => {
+          viewer.startVRSession(
+            () => { vrBtn.textContent = 'Exit VR'; },
+            () => { vrBtn.textContent = 'Enter VR'; }
+          );
+        });
+      }
+
+      roomSelect.addEventListener('change', async (event) => {
+        const room = rooms.find((item) => item.id === (event.target as HTMLSelectElement).value);
+        if (!room) return;
+
+        status.textContent = `Loading ${room.name}...`;
+        await viewer.loadRoom(room);
+        writeUrl(room.id);
+      });
+
+      window.addEventListener(
+        'pagehide',
+        () => {
+          viewer?.dispose();
+        },
+        { once: true }
+      );
+    </script>
+  </body>
+</html>

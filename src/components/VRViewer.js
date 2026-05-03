@@ -2,148 +2,248 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
-import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'; // Switched to HDRLoader for HDR (HDRLoader is deprecated in recent Three.js)
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
-export async function initVRViewer(container) {
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled = true;
-  renderer.xr.setReferenceSpaceType('local-floor'); // Added for floor-level VR tracking
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  container.appendChild(renderer.domElement);
+function disposeMaterial(material) {
+  if (!material) return;
 
-  // Basic lighting
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-  dirLight.position.set(5, 10, 7.5);
-  scene.add(dirLight);
-
-  // HDR environment (switched to HDRLoader as RGBLoader is depricated and HDRLoader is more standard/reliable)
-  const hdrLoader = new HDRLoader();
-  hdrLoader.load('/hdr/autumn_hill_view_1k.hdr', (texture) => {
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.environment = texture;
-    scene.background = texture; // optional
-  }, undefined, (err) => console.error('HDR load error:', err));
-
-  // Model loader with Draco
-  const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath('/draco/');
-  const loader = new GLTFLoader().setDRACOLoader(dracoLoader);
-
-  loader.load('/models/kellyburn_Room_Livingroom.glb', (gltf) => {
-    const model = gltf.scene;
-
-    // Scale model to metres if exported in centimetres
-    model.scale.setScalar(10);
-
-    // Center the model at world origin (improved: also ensure floor is at y=0 for local-floor VR)
-    const box = new THREE.Box3().setFromObject(model);
-    const center = box.getCenter(new THREE.Vector3());
-    model.position.sub(center);
-    // Optional floor adjustment if min.y != 0 (e.g., if model floor is elevated)
-    model.position.x = -center.x;
-    model.position.z = -center.z;
-    model.position.y -= box.min.y; // Uncomment if floor needs to be at y=0
-
-    // Position camera inside at eye height, looking toward bay window
-    // Adjusted y to 1.6m (standard eye height; was 0.6 which might be too low unless model scale is non-metric)
-    camera.position.set(0, 1.6, -2); // eye level, roughly center
-    // Look forward along +Z; adjust vector to point at bay window
-    controls.target.set(0, 1.6, 5); // look +Z direction (adjusted y for consistency)
-    // Alternative: if bay is on -Z, +X, etc.:
-    // controls.target.set(0, 1.6, -5); // look -Z
-    // controls.target.set(5, 1.6, 0); // look +X
-    // Or rotate camera yaw 90° if needed:
-    // camera.rotation.y = Math.PI / 2;
-
-    scene.add(model);
-    controls.update(); // Ensure controls reflect new position/target
-  }, (progress) => {
-    // Optional: Add loading progress if desired
-    console.log(`Model loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
-  }, (err) => console.error('Model load error:', err));
-
-  // Basic OrbitControls – full freedom, no limits
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = false; // snappy response (set true if you prefer smoothing)
-  controls.enablePan = true; // allow panning (right-click drag or two-finger)
-  controls.enableZoom = true;
-  controls.enableRotate = true;
-  // No min/max distance, no polar/azimuth limits → full movement freedom
-
-  // Added VR session handling for seamless transition and controls disable/enable
-  renderer.xr.addEventListener('sessionstart', () => {
-    const referenceSpace = renderer.xr.getReferenceSpace();
-    
-    const xrTransform = new XRRigidTransform(
-      { x: 0, y: 0, z: 0 },
-      { x: 0, y: 0, z: 0, w: 1 }
-    );
-    const offsetReferenceSpace = referenceSpace.getOffsetReferenceSpace(xrTransform);
-    renderer.xr.setReferenceSpace(offsetReferenceSpace);
-
-    // Disable OrbitControls in VR
-    controls.enabled = true;
-  });
-
-  renderer.xr.addEventListener('sessionend', () => {
-    // Re-enable OrbitControls after exiting VR
-    controls.enabled = true;
-  });
-
-  // VR button (conditional)
-  let vrButton = null;
-  if ('xr' in navigator) {
-    navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-      if (supported) {
-        vrButton = VRButton.createButton(renderer);
-        vrButton.style.position = 'absolute';
-        vrButton.style.bottom = '20px';
-        vrButton.style.left = '50%';
-        vrButton.style.transform = 'translateX(-50%)';
-        container.appendChild(vrButton);
-      } else {
-        const info = document.createElement('div');
-        info.textContent = 'VR not supported – use mouse/touch';
-        info.style.position = 'absolute';
-        info.style.bottom = '10px';
-        info.style.left = '10px';
-        info.style.color = 'white';
-        info.style.background = 'rgba(0,0,0,0.6)';
-        info.style.padding = '8px 12px';
-        info.style.borderRadius = '6px';
-        container.appendChild(info);
-      }
-    }).catch(console.error);
+  const keys = Object.keys(material);
+  for (const key of keys) {
+    const value = material[key];
+    if (value && typeof value === 'object' && value.isTexture) {
+      value.dispose();
+    }
   }
 
-  // Render loop
-  renderer.setAnimationLoop(() => {
+  material.dispose();
+}
+
+function disposeObject3D(root) {
+  root.traverse((node) => {
+    if (node.geometry) {
+      node.geometry.dispose();
+    }
+
+    if (Array.isArray(node.material)) {
+      node.material.forEach(disposeMaterial);
+    } else if (node.material) {
+      disposeMaterial(node.material);
+    }
+  });
+}
+
+function fitModelToOrigin(model) {
+  const bounds = new THREE.Box3().setFromObject(model);
+  const center = bounds.getCenter(new THREE.Vector3());
+
+  model.position.x -= center.x;
+  model.position.z -= center.z;
+  model.position.y -= bounds.min.y;
+}
+
+export async function initVRViewer(container, options = {}) {
+  const {
+    initialRoom,
+    onRoomChange = () => {}
+  } = options;
+
+  if (!initialRoom?.modelUrl) {
+    throw new Error('initVRViewer requires an initialRoom with modelUrl.');
+  }
+
+  let disposed = false;
+  let currentModel = null;
+  let currentRoom = null;
+  let environmentTexture = null;
+  let loadToken = 0;
+  let vrSupported = false;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+
+  // Request an XR-compatible context at creation time so Three.js never needs
+  // the async makeXRCompatible() call mid-session, which can invalidate the XRSession.
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', { xrCompatible: true })
+          ?? canvas.getContext('webgl', { xrCompatible: true });
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, canvas, context: gl });
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  container.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = false;
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+  const directional = new THREE.DirectionalLight(0xffffff, 1);
+  directional.position.set(5, 10, 7.5);
+  scene.add(ambient, directional);
+
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath('/draco/');
+  const gltfLoader = new GLTFLoader();
+  gltfLoader.setDRACOLoader(dracoLoader);
+
+  const hdrLoader = new HDRLoader();
+  hdrLoader.load(
+    '/hdr/autumn_hill_view_1k.hdr',
+    (texture) => {
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      environmentTexture = texture;
+      scene.environment = texture;
+      scene.background = texture;
+    },
+    undefined,
+    (error) => {
+      console.error('Failed to load HDR environment:', error);
+    }
+  );
+
+  const onSessionStart = () => {
+    controls.enabled = false;
+  };
+
+  const onSessionEnd = () => {
+    controls.enabled = true;
+  };
+
+  renderer.xr.addEventListener('sessionstart', onSessionStart);
+  renderer.xr.addEventListener('sessionend', onSessionEnd);
+
+  if ('xr' in navigator) {
+    navigator.xr
+      .isSessionSupported('immersive-vr')
+      .then((supported) => { vrSupported = supported && !disposed; })
+      .catch(() => {});
+  }
+
+  function resize() {
+    const width = Math.max(container.clientWidth, 1);
+    const height = Math.max(container.clientHeight, 1);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height, false);
+  }
+
+  function applyRoomView(room) {
+    const [camX, camY, camZ] = room.cameraPosition || [0, 1.6, -2];
+    const [targetX, targetY, targetZ] = room.target || [0, 1.6, 5];
+    camera.position.set(camX, camY, camZ);
+    controls.target.set(targetX, targetY, targetZ);
     controls.update();
+  }
+
+  async function loadRoom(room) {
+    if (disposed || !room?.modelUrl) return;
+
+    currentRoom = room;
+    const token = ++loadToken;
+
+    try {
+      const gltf = await gltfLoader.loadAsync(room.modelUrl);
+      if (disposed || token !== loadToken) {
+        disposeObject3D(gltf.scene);
+        return;
+      }
+
+      if (currentModel) {
+        scene.remove(currentModel);
+        disposeObject3D(currentModel);
+        currentModel = null;
+      }
+
+      const model = gltf.scene;
+      model.scale.setScalar(room.scale ?? 1);
+      fitModelToOrigin(model);
+      scene.add(model);
+
+      currentModel = model;
+      applyRoomView(room);
+      onRoomChange(room);
+    } catch (error) {
+      console.error(`Failed to load model for room "${room.id}":`, error);
+    }
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  renderer.setAnimationLoop(() => {
     renderer.render(scene, camera);
   });
 
-  // Handle resize
-  const onResize = () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  };
-  window.addEventListener('resize', onResize);
+  await loadRoom(initialRoom);
 
-  // Cleanup function (improved: more thorough disposal)
-  return () => {
-    window.removeEventListener('resize', onResize);
-    renderer.setAnimationLoop(null); // Stop loop
-    renderer.dispose();
-    controls.dispose();
-    if (vrButton) vrButton.remove();
-    // Optional: scene.traverse((obj) => { if (obj.dispose) obj.dispose(); });
+  return {
+    loadRoom,
+    getCurrentRoom: () => currentRoom,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+
+      window.removeEventListener('resize', resize);
+      renderer.xr.removeEventListener('sessionstart', onSessionStart);
+      renderer.xr.removeEventListener('sessionend', onSessionEnd);
+      renderer.setAnimationLoop(null);
+
+      if (currentModel) {
+        scene.remove(currentModel);
+        disposeObject3D(currentModel);
+        currentModel = null;
+      }
+
+      if (environmentTexture) {
+        environmentTexture.dispose();
+        environmentTexture = null;
+      }
+
+      controls.dispose();
+      dracoLoader.dispose();
+      renderer.dispose();
+
+      if (renderer.domElement.parentElement === container) {
+        container.removeChild(renderer.domElement);
+      }
+    },
+    isVRSupported: () => vrSupported,
+    async startVRSession(onStart, onEnd) {
+      if (!vrSupported || renderer.xr.isPresenting) return;
+      try {
+        const session = await navigator.xr.requestSession('immersive-vr', {
+          requiredFeatures: ['local-floor'],
+          optionalFeatures: ['bounded-floor', 'hand-tracking']
+        });
+        // Three.js evaluates `supportsLayers` inside setSession as:
+        //   supportsGlBinding && 'createProjectionLayer' in XRWebGLBinding.prototype
+        // supportsGlBinding is locked at module load time and will be true when
+        // the webxr-polyfill is present. The polyfill also adds createProjectionLayer
+        // to XRWebGLBinding.prototype, making supportsLayers=true — which causes
+        // new XRWebGLBinding(polyfillSession, gl) to throw because a polyfilled
+        // session is not a native XRSession instance.
+        // Fix: temporarily remove createProjectionLayer before setSession so
+        // Three.js takes the safe XRWebGLLayer path instead.
+        const xrBinding = typeof XRWebGLBinding !== 'undefined' ? XRWebGLBinding : null;
+        const savedCreateProjectionLayer = xrBinding?.prototype.createProjectionLayer;
+        if (xrBinding && savedCreateProjectionLayer) {
+          delete xrBinding.prototype.createProjectionLayer;
+        }
+        try {
+          await renderer.xr.setSession(session);
+        } finally {
+          if (xrBinding && savedCreateProjectionLayer) {
+            xrBinding.prototype.createProjectionLayer = savedCreateProjectionLayer;
+          }
+        }
+        onStart?.();
+        session.addEventListener('end', () => onEnd?.(), { once: true });
+      } catch (error) {
+        console.error('Failed to start VR session:', error);
+      }
+    }
   };
 }

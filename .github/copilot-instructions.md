@@ -1,34 +1,40 @@
-# VR Web App Project Guidelines
+# VR Web App Guidelines
 
-## Core Philosophy
-- **Minimalism first**: Smallest possible code that is fast, secure, and maintainable.
-- **Astro as orchestrator**: Use islands only when necessary. Prefer vanilla Three.js.
-- **Performance**: Optimize for VR (60+ FPS on Quest). Use Draco, proper disposal, minimal draw calls.
-- **Styling**: Open Props + semantic CSS custom properties only. NO Tailwind classes. Keep HTML clean.
-- **Package Manager**: Always use pnpm.
+## Code Style
+- Keep changes minimal, fast, and maintainable. Avoid broad refactors unless requested.
+- Use `pnpm` for all package/script operations.
+- Prefer TypeScript for new logic; keep strict typing compatible with `astro/tsconfigs/strict`.
+- For styling, use Open Props and semantic CSS custom properties. Do not introduce Tailwind.
+- Add comments only for non-obvious logic (especially VR/Three.js lifecycle or Blender export gotchas).
 
-## File Structure Expectations
-- `src/lib/` for pure logic (e.g. `vr-core.ts`)
-- `src/components/` for Astro islands
-- `src/styles/` for Open Props + custom CSS
-- `public/models/`, `public/textures/`, `public/hdr/`
+## Architecture
+- Astro is the app shell; keep page files thin and orchestration-focused.
+- `src/pages/index.astro` is the room-selector home page (`/`).
+- `src/pages/viewer.astro` is the viewer route (`/viewer?room=<id>`) and bootstraps the VRViewer.
+- `src/components/VRViewer.js` owns Three.js/WebXR setup, interaction mode switching, and lifecycle.
+- `src/lib/rooms.js` is the single source of truth for the room catalogue.
+- Put reusable pure logic in `src/lib/` when functionality grows beyond one viewer module.
+- Keep assets in `public/models/`, `public/textures/`, `public/hdr/`, and Draco decoders in `public/draco/`.
 
-## Coding Standards
-- TypeScript strict.
-- Three.js: Use modern patterns, clone materials before editing, traverse GLTF intelligently.
-- VR: Support desktop (mouse/OrbitControls) + WebXR seamlessly. Raycasting for surface selection.
-- Stage 1: Surface color/texture picker that works in both web view and VR.
-- Comments: Explain Blender export tips when relevant (UVs, materials, scale).
+## Build and Validation
+- Install deps: `pnpm install`
+- Dev server: `pnpm dev`
+- Production build: `pnpm build`
+- Preview build: `pnpm preview`
+- Astro CLI checks: `pnpm astro check`
+- There are currently no dedicated lint/test scripts; run the most relevant Astro check/build command for changes.
 
-## Blender → Web Workflow
-- Export .glb with Draco compression.
-- Unique materials or named meshes for editable surfaces.
-- PBR textures, proper UVs.
+## Conventions
+- Maintain desktop + VR parity: mouse/touch (`OrbitControls`) and WebXR should both work after changes.
+- Optimize for VR performance (Quest-class devices): Draco-compressed models, minimal draw calls, careful allocations.
+- Three.js resource safety is required: dispose renderers/controls and clean up geometries, materials, textures, and listeners when adding new resources.
+- Clone materials before mutating shared GLTF materials.
+- Use raycasting/controller-friendly interaction patterns for editable surfaces.
+- Blender export expectations for interactive surfaces:
+	- Export `.glb` with Draco compression.
+	- Use unique/named materials or mesh names for targetable surfaces.
+	- Ensure UVs and PBR textures are correct; keep scale consistent with floor-level VR.
 
-## GitHub Copilot Rules
-- Always prefer smallest code.
-- Suggest clean, commented, typed solutions.
-- When editing, maintain Open Props styling and pnpm compatibility.
-- For Three.js changes: ensure dispose() cleanup, raycaster for interaction, XR controller support.
-
-Follow these rules on every suggestion.
+## Docs
+- See `README.md` for base Astro workflow commands.
+- See `public/draco/README.md` for Draco decoder/background details.
