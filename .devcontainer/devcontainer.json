@@ -1,0 +1,10 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": { "ghcr.io/devcontainers/features/node:1": {} },
+  "postCreateCommand": "pnpm install",
+  "customizations": {
+    "vscode": {
+      "extensions": ["astro-build.astro-vscode", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "github.copilot"]
+    }
+  }
+}
