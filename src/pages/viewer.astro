@@ -172,9 +172,34 @@
         toggle.setAttribute('aria-expanded', String(!open));
       });
 
+      async function getLocalModelUrl(): Promise<string | null> {
+        try {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open('vrwebapp', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('models');
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
+          const buffer = await new Promise<ArrayBuffer | null>((resolve, reject) => {
+            const req = db.transaction('models').objectStore('models').get('localModel');
+            req.onsuccess = () => resolve(req.result ?? null);
+            req.onerror = () => reject(req.error);
+          });
+          if (!buffer) return null;
+          return URL.createObjectURL(new Blob([buffer], { type: 'model/gltf-binary' }));
+        } catch {
+          return null;
+        }
+      }
+
+      function getLocalRoomShell() {
+        const name = sessionStorage.getItem('localModelName') || 'Local Model';
+        if (!sessionStorage.getItem('localModelName')) return null;
+        return { id: '__local__', name, description: 'Loaded from your device.', modelUrl: '', scale: 1, cameraPosition: [0, 1.6, -2] as [number,number,number], target: [0, 1.6, 5] as [number,number,number], isMock: false };
+      }
+
       function getRoomFromUrl() {
-        const roomId = new URL(window.location.href).searchParams.get('room');
-        return rooms.find((room) => room.id === roomId) || rooms[0];
+        return new URL(window.location.href).searchParams.get('room');
       }
 
       function writeUrl(roomId: string) {
@@ -190,11 +215,30 @@
         roomSelect.appendChild(option);
       }
 
-      let viewer;
-      let activeRoom = getRoomFromUrl();
+      // If a local model was stored, add it as the first option in the selector
+      const localShell = getLocalRoomShell();
+      if (localShell) {
+        const localOption = document.createElement('option');
+        localOption.value = '__local__';
+        localOption.textContent = `📂 ${localShell.name}`;
+        roomSelect.insertBefore(localOption, roomSelect.firstChild);
+      }
+
+      const initialRoomId = getRoomFromUrl();
+      let activeRoom;
+
+      if (initialRoomId === '__local__') {
+        const modelUrl = await getLocalModelUrl();
+        const shell = getLocalRoomShell();
+        activeRoom = shell && modelUrl ? { ...shell, modelUrl } : rooms[0];
+      } else {
+        activeRoom = rooms.find((r) => r.id === initialRoomId) || rooms[0];
+      }
+
       roomSelect.value = activeRoom.id;
 
       status.textContent = `Loading ${activeRoom.name}...`;
+      let viewer;
       viewer = await initVRViewer(container, {
         initialRoom: activeRoom,
         onRoomChange(room: (typeof rooms)[number]) {
@@ -217,7 +261,15 @@
       }
 
       roomSelect.addEventListener('change', async (event) => {
-        const room = rooms.find((item) => item.id === (event.target as HTMLSelectElement).value);
+        const selectedId = (event.target as HTMLSelectElement).value;
+        let room;
+        if (selectedId === '__local__') {
+          const modelUrl = await getLocalModelUrl();
+          const shell = getLocalRoomShell();
+          room = shell && modelUrl ? { ...shell, modelUrl } : null;
+        } else {
+          room = rooms.find((item) => item.id === selectedId);
+        }
         if (!room) return;
 
         status.textContent = `Loading ${room.name}...`;

@@ -107,6 +107,36 @@ import { rooms } from '../lib/rooms.js';
 				color: var(--muted);
 			}
 
+			.card-upload {
+				border: 2px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+				background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+			}
+
+			.card-upload input[type="file"] {
+				display: none;
+			}
+
+			.cta-outline {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				margin-top: 1rem;
+				padding: 0.65rem 0.9rem;
+				border-radius: 999px;
+				border: 2px solid var(--accent);
+				background: transparent;
+				color: var(--accent);
+				font: 600 1rem/1 inherit;
+				cursor: pointer;
+				transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+			}
+
+			.cta-outline:hover {
+				background: var(--accent);
+				color: #fff;
+				transform: translateY(-1px);
+			}
+
 			@media (max-width: 640px) {
 				main {
 					padding-top: 2rem;
@@ -135,7 +165,50 @@ import { rooms } from '../lib/rooms.js';
 						<a class="cta" href={`/viewer?room=${room.id}`}>Open Room</a>
 					</article>
 				))}
+				<article class="card card-upload" id="upload-card">
+					<div>
+						<h2>Load from Drive</h2>
+						<p>Open a local <strong>.glb</strong> or <strong>.gltf</strong> file directly from your device.</p>
+					</div>
+					<input type="file" id="local-model-input" accept=".glb,.gltf" />
+					<button class="cta-outline" id="upload-btn">Choose File…</button>
+				</article>
 			</section>
 		</main>
+
+		<script>
+			const btn = document.getElementById('upload-btn') as HTMLButtonElement;
+			const input = document.getElementById('local-model-input') as HTMLInputElement;
+
+			btn.addEventListener('click', () => input.click());
+
+			input.addEventListener('change', async () => {
+				const file = input.files?.[0];
+				if (!file) return;
+
+				btn.textContent = 'Reading file…';
+				btn.disabled = true;
+
+				const buffer = await file.arrayBuffer();
+
+				// Store the raw bytes in IndexedDB — blob URLs are invalidated on navigation
+				const db = await new Promise<IDBDatabase>((resolve, reject) => {
+					const req = indexedDB.open('vrwebapp', 1);
+					req.onupgradeneeded = () => req.result.createObjectStore('models');
+					req.onsuccess = () => resolve(req.result);
+					req.onerror = () => reject(req.error);
+				});
+
+				await new Promise<void>((resolve, reject) => {
+					const tx = db.transaction('models', 'readwrite');
+					tx.objectStore('models').put(buffer, 'localModel');
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+
+				sessionStorage.setItem('localModelName', file.name);
+				window.location.href = '/viewer?room=__local__';
+			});
+		</script>
 	</body>
 </html>
