@@ -177,6 +177,8 @@ import { rooms } from '../lib/rooms.js';
 		</main>
 
 		<script>
+			import { saveLocalModelFile } from '../lib/localModelStore.js';
+
 			const btn = document.getElementById('upload-btn') as HTMLButtonElement;
 			const input = document.getElementById('local-model-input') as HTMLInputElement;
 
@@ -189,24 +191,7 @@ import { rooms } from '../lib/rooms.js';
 				btn.textContent = 'Reading file…';
 				btn.disabled = true;
 
-				const buffer = await file.arrayBuffer();
-
-				// Store the raw bytes in IndexedDB — blob URLs are invalidated on navigation
-				const db = await new Promise<IDBDatabase>((resolve, reject) => {
-					const req = indexedDB.open('vrwebapp', 1);
-					req.onupgradeneeded = () => req.result.createObjectStore('models');
-					req.onsuccess = () => resolve(req.result);
-					req.onerror = () => reject(req.error);
-				});
-
-				await new Promise<void>((resolve, reject) => {
-					const tx = db.transaction('models', 'readwrite');
-					tx.objectStore('models').put(buffer, 'localModel');
-					tx.oncomplete = () => resolve();
-					tx.onerror = () => reject(tx.error);
-				});
-
-				sessionStorage.setItem('localModelName', file.name);
+				await saveLocalModelFile(file);
 				window.location.href = '/viewer?room=__local__';
 			});
 		</script>

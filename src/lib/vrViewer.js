@@ -4,6 +4,18 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
+const MATERIAL_PRESETS = {
+  matte: { roughness: 0.9, metalness: 0 },
+  satin: { roughness: 0.55, metalness: 0.02 },
+  gloss: { roughness: 0.2, metalness: 0.05 },
+  concrete: { roughness: 0.95, metalness: 0 },
+  'brushed-metal': { roughness: 0.35, metalness: 0.85 }
+};
+
+function clamp01(value) {
+  return Math.min(Math.max(value, 0), 1);
+}
+
 function disposeMaterial(material) {
   if (!material) return;
 
@@ -41,6 +53,64 @@ function fitModelToOrigin(model) {
   model.position.y -= bounds.min.y;
 }
 
+function detectSurfaceGroup(mesh, material) {
+  const source = [mesh.name, mesh.parent?.name, material?.name].filter(Boolean).join(' ').toLowerCase();
+
+  if (source.includes('wall') || source.includes('partition') || source.includes('drywall') || source.includes('plaster')) {
+    return 'walls';
+  }
+
+  if (source.includes('ceiling') || source.includes('ceil') || source.includes('roof')) {
+    return 'ceiling';
+  }
+
+  if (source.includes('floor') || source.includes('ground') || source.includes('tile') || source.includes('carpet') || source.includes('rug')) {
+    return 'floor';
+  }
+
+  return 'objects';
+}
+
+function createMaterialSnapshot(material) {
+  return {
+    color: material.color ? `#${material.color.getHexString()}` : null,
+    roughness: typeof material.roughness === 'number' ? material.roughness : null,
+    metalness: typeof material.metalness === 'number' ? material.metalness : null
+  };
+}
+
+function applyMaterialValues(material, values = {}) {
+  if (values.preset && MATERIAL_PRESETS[values.preset]) {
+    const preset = MATERIAL_PRESETS[values.preset];
+    if (typeof material.roughness === 'number') material.roughness = preset.roughness;
+    if (typeof material.metalness === 'number') material.metalness = preset.metalness;
+  }
+
+  if (values.color && material.color) {
+    material.color.set(values.color);
+  }
+
+  if (typeof values.roughness === 'number' && typeof material.roughness === 'number') {
+    material.roughness = clamp01(values.roughness);
+  }
+
+  if (typeof values.metalness === 'number' && typeof material.metalness === 'number') {
+    material.metalness = clamp01(values.metalness);
+  }
+
+  material.needsUpdate = true;
+}
+
+function makeSummary(surfaceGroups) {
+  return {
+    all: surfaceGroups.all.length,
+    walls: surfaceGroups.walls.length,
+    ceiling: surfaceGroups.ceiling.length,
+    floor: surfaceGroups.floor.length,
+    objects: surfaceGroups.objects.length
+  };
+}
+
 export async function initVRViewer(container, options = {}) {
   const {
     initialRoom,
@@ -57,6 +127,14 @@ export async function initVRViewer(container, options = {}) {
   let environmentTexture = null;
   let loadToken = 0;
   let vrSupported = false;
+
+  const surfaceGroups = {
+    all: [],
+    walls: [],
+    ceiling: [],
+    floor: [],
+    objects: []
+  };
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
@@ -122,6 +200,51 @@ export async function initVRViewer(container, options = {}) {
       .catch(() => {});
   }
 
+  function clearSurfaceGroups() {
+    surfaceGroups.all = [];
+    surfaceGroups.walls = [];
+    surfaceGroups.ceiling = [];
+    surfaceGroups.floor = [];
+    surfaceGroups.objects = [];
+  }
+
+  function indexEditableSurfaces(model) {
+    clearSurfaceGroups();
+
+    model.traverse((node) => {
+      if (!node.isMesh || !node.material) return;
+
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      const clonedMaterials = [];
+
+      materials.forEach((material, index) => {
+        if (!material) return;
+
+        const editableMaterial = material.clone();
+        const groupId = detectSurfaceGroup(node, editableMaterial);
+        const entry = {
+          material: editableMaterial,
+          snapshot: createMaterialSnapshot(editableMaterial)
+        };
+
+        surfaceGroups.all.push(entry);
+        if (surfaceGroups[groupId]) {
+          surfaceGroups[groupId].push(entry);
+        } else {
+          surfaceGroups.objects.push(entry);
+        }
+
+        clonedMaterials[index] = editableMaterial;
+      });
+
+      node.material = Array.isArray(node.material) ? clonedMaterials : clonedMaterials[0];
+    });
+  }
+
+  function getGroupEntries(groupId = 'all') {
+    return surfaceGroups[groupId] || [];
+  }
+
   function resize() {
     const width = Math.max(container.clientWidth, 1);
     const height = Math.max(container.clientHeight, 1);
@@ -160,6 +283,7 @@ export async function initVRViewer(container, options = {}) {
       const model = gltf.scene;
       model.scale.setScalar(room.scale ?? 1);
       fitModelToOrigin(model);
+      indexEditableSurfaces(model);
       scene.add(model);
 
       currentModel = model;
@@ -182,6 +306,27 @@ export async function initVRViewer(container, options = {}) {
   return {
     loadRoom,
     getCurrentRoom: () => currentRoom,
+    getEditableSurfaceSummary() {
+      return makeSummary(surfaceGroups);
+    },
+    setSurfaceAppearance(groupId, values = {}) {
+      const entries = getGroupEntries(groupId);
+      for (const entry of entries) {
+        applyMaterialValues(entry.material, values);
+      }
+      return { updated: entries.length };
+    },
+    resetSurfaceAppearance(groupId = 'all') {
+      const entries = getGroupEntries(groupId);
+      for (const entry of entries) {
+        applyMaterialValues(entry.material, {
+          color: entry.snapshot.color,
+          roughness: entry.snapshot.roughness,
+          metalness: entry.snapshot.metalness
+        });
+      }
+      return { updated: entries.length };
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -190,6 +335,8 @@ export async function initVRViewer(container, options = {}) {
       renderer.xr.removeEventListener('sessionstart', onSessionStart);
       renderer.xr.removeEventListener('sessionend', onSessionEnd);
       renderer.setAnimationLoop(null);
+
+      clearSurfaceGroups();
 
       if (currentModel) {
         scene.remove(currentModel);
@@ -222,9 +369,8 @@ export async function initVRViewer(container, options = {}) {
         //   supportsGlBinding && 'createProjectionLayer' in XRWebGLBinding.prototype
         // supportsGlBinding is locked at module load time and will be true when
         // the webxr-polyfill is present. The polyfill also adds createProjectionLayer
-        // to XRWebGLBinding.prototype, making supportsLayers=true — which causes
-        // new XRWebGLBinding(polyfillSession, gl) to throw because a polyfilled
-        // session is not a native XRSession instance.
+        // to XRWebGLBinding.prototype, making supportsLayers=true, which causes
+        // new XRWebGLBinding(polyfillSession, gl) to throw for polyfilled sessions.
         // Fix: temporarily remove createProjectionLayer before setSession so
         // Three.js takes the safe XRWebGLLayer path instead.
         const xrBinding = typeof XRWebGLBinding !== 'undefined' ? XRWebGLBinding : null;

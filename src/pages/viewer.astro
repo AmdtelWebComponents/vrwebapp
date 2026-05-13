@@ -1,4 +1,7 @@
 ---
+import { rooms } from '../lib/rooms.js';
+import ViewerTopBar from '../components/ViewerTopBar.astro';
+---
 ---
 
 <html lang="en">
@@ -34,102 +37,9 @@
         position: relative;
       }
 
-      .topbar {
-        position: absolute;
-        top: 0.75rem;
-        left: 0.75rem;
-        z-index: 20;
-        border-radius: 12px;
-        border: 1px solid var(--panel-border);
-        background: var(--panel);
-        backdrop-filter: blur(5px);
-        overflow: hidden;
-      }
-
-      /* Toggle button always visible */
-      .topbar-toggle {
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        width: 100%;
-        padding: 0.55rem 0.75rem;
-        background: transparent;
-        border: none;
-        color: var(--text);
-        font: 600 0.9rem/1 inherit;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-
-      .topbar-toggle svg {
-        flex-shrink: 0;
-        transition: transform 200ms ease;
-      }
-
-      .topbar[data-open="false"] .topbar-toggle svg {
-        transform: rotate(-90deg);
-      }
-
-      /* Collapsible body */
-      .topbar-body {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.55rem;
-        align-items: center;
-        padding: 0 0.55rem 0.55rem;
-      }
-
-      .topbar[data-open="false"] .topbar-body {
-        display: none;
-      }
-
-      .topbar a,
-      .topbar select,
-      .topbar button.action {
-        border: 0;
-        border-radius: 999px;
-        font: inherit;
-        line-height: 1;
-      }
-
-      .topbar a {
-        padding: 0.6rem 0.8rem;
-        background: #2a3442;
-        color: var(--text);
-        text-decoration: none;
-      }
-
-      .topbar select {
-        min-width: 190px;
-        padding: 0.62rem 0.8rem;
-        background: #f7f0db;
-        color: #1a1f27;
-      }
-
-      .status {
-        color: var(--muted);
-        font-size: 0.9rem;
-        padding-inline: 0.35rem;
-      }
-
-      button.action {
-        display: inline-block;
-        padding: 0.6rem 0.8rem;
-        background: var(--action);
-        color: #fff;
-        cursor: pointer;
-      }
-
-      #vr-btn { display: none; }
-
       @media (max-width: 640px) {
-        .topbar {
-          right: 0.75rem;
-        }
-
-        .topbar select {
-          min-width: 160px;
-          flex: 1;
+        body {
+          font-size: 15px;
         }
       }
     </style>
@@ -139,64 +49,49 @@
   </head>
   <body>
     <div id="canvas-container">
-      <div class="topbar" data-open="true">
-        <button class="topbar-toggle" id="topbar-toggle" aria-expanded="true" aria-controls="topbar-body">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path d="M2 4l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Rooms
-        </button>
-        <div class="topbar-body" id="topbar-body">
-          <a href="/">All Rooms</a>
-          <select id="room-select" aria-label="Room selector"></select>
-          <button class="action" id="vr-btn">Enter VR</button>
-          <span class="status" id="status">Loading room…</span>
-        </div>
-      </div>
+      <ViewerTopBar rooms={rooms} />
     </div>
 
     <script>
-      import { initVRViewer } from '../components/VRViewer.js';
+      import { initVRViewer } from '../lib/vrViewer.js';
       import { rooms } from '../lib/rooms.js';
+      import { getLocalRoomShell, readLocalModelBlobUrl } from '../lib/localModelStore.js';
+
+      type SurfaceKey = 'all' | 'walls' | 'ceiling' | 'floor' | 'objects';
+      type ViewerController = {
+        loadRoom: (room: (typeof rooms)[number]) => Promise<void>;
+        getEditableSurfaceSummary: () => Record<SurfaceKey, number>;
+        setSurfaceAppearance: (
+          groupId: SurfaceKey,
+          values: { color?: string; preset?: string; roughness?: number; metalness?: number }
+        ) => { updated: number };
+        resetSurfaceAppearance: (groupId?: SurfaceKey) => { updated: number };
+        isVRSupported: () => boolean;
+        startVRSession: (onStart?: () => void, onEnd?: () => void) => Promise<void>;
+        dispose: () => void;
+      };
 
       const container = document.getElementById('canvas-container') as HTMLDivElement;
       const roomSelect = document.getElementById('room-select') as HTMLSelectElement;
       const status = document.getElementById('status') as HTMLElement;
       const vrBtn = document.getElementById('vr-btn') as HTMLButtonElement;
+      const materialTarget = document.getElementById('material-target') as HTMLSelectElement;
+      const materialColor = document.getElementById('material-color') as HTMLInputElement;
+      const materialPreset = document.getElementById('material-preset') as HTMLSelectElement;
+      const materialRoughness = document.getElementById('material-roughness') as HTMLInputElement;
+      const materialMetalness = document.getElementById('material-metalness') as HTMLInputElement;
+      const materialApply = document.getElementById('material-apply') as HTMLButtonElement;
+      const materialReset = document.getElementById('material-reset') as HTMLButtonElement;
+      const materialStatus = document.getElementById('material-status') as HTMLElement;
       const topbar = document.querySelector('.topbar') as HTMLElement;
       const toggle = document.getElementById('topbar-toggle') as HTMLButtonElement;
+      const localObjectUrls = new Set<string>();
 
       toggle.addEventListener('click', () => {
         const open = topbar.dataset.open === 'true';
         topbar.dataset.open = String(!open);
         toggle.setAttribute('aria-expanded', String(!open));
       });
-
-      async function getLocalModelUrl(): Promise<string | null> {
-        try {
-          const db = await new Promise<IDBDatabase>((resolve, reject) => {
-            const req = indexedDB.open('vrwebapp', 1);
-            req.onupgradeneeded = () => req.result.createObjectStore('models');
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-          });
-          const buffer = await new Promise<ArrayBuffer | null>((resolve, reject) => {
-            const req = db.transaction('models').objectStore('models').get('localModel');
-            req.onsuccess = () => resolve(req.result ?? null);
-            req.onerror = () => reject(req.error);
-          });
-          if (!buffer) return null;
-          return URL.createObjectURL(new Blob([buffer], { type: 'model/gltf-binary' }));
-        } catch {
-          return null;
-        }
-      }
-
-      function getLocalRoomShell() {
-        const name = sessionStorage.getItem('localModelName') || 'Local Model';
-        if (!sessionStorage.getItem('localModelName')) return null;
-        return { id: '__local__', name, description: 'Loaded from your device.', modelUrl: '', scale: 1, cameraPosition: [0, 1.6, -2] as [number,number,number], target: [0, 1.6, 5] as [number,number,number], isMock: false };
-      }
 
       function getRoomFromUrl() {
         return new URL(window.location.href).searchParams.get('room');
@@ -208,37 +103,64 @@
         window.history.replaceState({}, '', url);
       }
 
-      for (const room of rooms) {
-        const option = document.createElement('option');
-        option.value = room.id;
-        option.textContent = room.isMock ? `${room.name} (mock)` : room.name;
-        roomSelect.appendChild(option);
+      function syncLocalRoomOption() {
+        const existing = roomSelect.querySelector('option[value="__local__"]');
+        const shell = getLocalRoomShell();
+
+        if (!shell && existing) {
+          existing.remove();
+          return;
+        }
+
+        if (shell && !existing) {
+          const option = document.createElement('option');
+          option.value = '__local__';
+          option.textContent = `Local: ${shell.name}`;
+          roomSelect.insertBefore(option, roomSelect.firstChild);
+          return;
+        }
+
+        if (shell && existing) {
+          existing.textContent = `Local: ${shell.name}`;
+        }
       }
 
-      // If a local model was stored, add it as the first option in the selector
-      const localShell = getLocalRoomShell();
-      if (localShell) {
-        const localOption = document.createElement('option');
-        localOption.value = '__local__';
-        localOption.textContent = `📂 ${localShell.name}`;
-        roomSelect.insertBefore(localOption, roomSelect.firstChild);
+      async function resolveRoomById(roomId: string | null) {
+        if (roomId === '__local__') {
+          const modelUrl = await readLocalModelBlobUrl();
+          const shell = getLocalRoomShell();
+          if (modelUrl && shell) {
+            localObjectUrls.add(modelUrl);
+            return { ...shell, modelUrl };
+          }
+          return null;
+        }
+
+        return rooms.find((room) => room.id === roomId) || null;
       }
+
+      function refreshMaterialTargets(viewer: ViewerController) {
+        const summary = viewer.getEditableSurfaceSummary();
+        for (const option of materialTarget.options) {
+          const key = option.value as SurfaceKey;
+          const label = option.textContent?.split('(')[0]?.trim() || option.textContent || key;
+          option.textContent = `${label} (${summary[key] ?? 0})`;
+        }
+      }
+
+      syncLocalRoomOption();
 
       const initialRoomId = getRoomFromUrl();
-      let activeRoom;
+      let activeRoom = await resolveRoomById(initialRoomId);
 
-      if (initialRoomId === '__local__') {
-        const modelUrl = await getLocalModelUrl();
-        const shell = getLocalRoomShell();
-        activeRoom = shell && modelUrl ? { ...shell, modelUrl } : rooms[0];
-      } else {
-        activeRoom = rooms.find((r) => r.id === initialRoomId) || rooms[0];
+      if (!activeRoom) {
+        activeRoom = rooms[0];
       }
 
       roomSelect.value = activeRoom.id;
 
       status.textContent = `Loading ${activeRoom.name}...`;
-      let viewer;
+      let viewer: ViewerController;
       viewer = await initVRViewer(container, {
         initialRoom: activeRoom,
         onRoomChange(room: (typeof rooms)[number]) {
@@ -247,7 +169,33 @@
           status.textContent = room.isMock
             ? `${room.name} loaded (mock model)`
             : `${room.name} loaded`;
+          refreshMaterialTargets(viewer);
         }
+      });
+
+      refreshMaterialTargets(viewer);
+
+      function getMaterialValues() {
+        const roughness = Number.parseFloat(materialRoughness.value);
+        const metalness = Number.parseFloat(materialMetalness.value);
+        const preset = materialPreset.value;
+
+        return {
+          color: materialColor.value,
+          preset: preset === 'custom' ? undefined : preset,
+          roughness,
+          metalness
+        };
+      }
+
+      materialApply.addEventListener('click', () => {
+        const result = viewer.setSurfaceAppearance(materialTarget.value as SurfaceKey, getMaterialValues());
+        materialStatus.textContent = `Updated ${result.updated} material(s).`;
+      });
+
+      materialReset.addEventListener('click', () => {
+        const result = viewer.resetSurfaceAppearance(materialTarget.value as SurfaceKey);
+        materialStatus.textContent = `Reset ${result.updated} material(s).`;
       });
 
       if (viewer.isVRSupported()) {
@@ -262,14 +210,7 @@
 
       roomSelect.addEventListener('change', async (event) => {
         const selectedId = (event.target as HTMLSelectElement).value;
-        let room;
-        if (selectedId === '__local__') {
-          const modelUrl = await getLocalModelUrl();
-          const shell = getLocalRoomShell();
-          room = shell && modelUrl ? { ...shell, modelUrl } : null;
-        } else {
-          room = rooms.find((item) => item.id === selectedId);
-        }
+        const room = await resolveRoomById(selectedId);
         if (!room) return;
 
         status.textContent = `Loading ${room.name}...`;
@@ -281,6 +222,9 @@
         'pagehide',
         () => {
           viewer?.dispose();
+          for (const localUrl of localObjectUrls) {
+            URL.revokeObjectURL(localUrl);
+          }
         },
         { once: true }
       );
