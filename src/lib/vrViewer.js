@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const MATERIAL_PRESETS = {
   matte: { roughness: 0.9, metalness: 0 },
@@ -114,7 +114,8 @@ function makeSummary(surfaceGroups) {
 export async function initVRViewer(container, options = {}) {
   const {
     initialRoom,
-    onRoomChange = () => {}
+    onRoomChange = () => {},
+    onPerformanceEvent = () => {}
   } = options;
 
   if (!initialRoom?.modelUrl) {
@@ -125,6 +126,7 @@ export async function initVRViewer(container, options = {}) {
   let currentModel = null;
   let currentRoom = null;
   let environmentTexture = null;
+  let pmremGenerator = null;
   let loadToken = 0;
   let vrSupported = false;
 
@@ -135,6 +137,14 @@ export async function initVRViewer(container, options = {}) {
     floor: [],
     objects: []
   };
+
+  function roundMs(value) {
+    return Math.round(value * 10) / 10;
+  }
+
+  function emitPerformanceEvent(phase, detail = {}) {
+    onPerformanceEvent({ phase, ...detail });
+  }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
@@ -154,6 +164,9 @@ export async function initVRViewer(container, options = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   container.appendChild(renderer.domElement);
 
+  pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = false;
 
@@ -167,14 +180,30 @@ export async function initVRViewer(container, options = {}) {
   const gltfLoader = new GLTFLoader();
   gltfLoader.setDRACOLoader(dracoLoader);
 
-  const hdrLoader = new HDRLoader();
-  hdrLoader.load(
+  const hdriLoader = new HDRLoader();
+  const environmentLoadStartedAt = performance.now();
+  hdriLoader.load(
     '/hdr/autumn_hill_view_1k.hdr',
     (texture) => {
-      texture.mapping = THREE.EquirectangularReflectionMapping;
-      environmentTexture = texture;
-      scene.environment = texture;
-      scene.background = texture;
+      const pmremStartedAt = performance.now();
+      const envMap = pmremGenerator?.fromEquirectangular(texture).texture ?? texture;
+      texture.dispose();
+
+      if (environmentTexture) {
+        environmentTexture.dispose();
+      }
+
+      environmentTexture = envMap;
+      scene.environment = envMap;
+      scene.background = envMap;
+
+      emitPerformanceEvent('environment-ready', {
+        totalMs: roundMs(performance.now() - environmentLoadStartedAt),
+        pmremMs: roundMs(performance.now() - pmremStartedAt)
+      });
+
+      pmremGenerator?.dispose();
+      pmremGenerator = null;
     },
     undefined,
     (error) => {
@@ -261,14 +290,17 @@ export async function initVRViewer(container, options = {}) {
     controls.update();
   }
 
-  async function loadRoom(room) {
+  async function loadRoom(room, { notify = true } = {}) {
     if (disposed || !room?.modelUrl) return;
 
     currentRoom = room;
     const token = ++loadToken;
+    const roomLoadStartedAt = performance.now();
 
     try {
+      const gltfLoadStartedAt = performance.now();
       const gltf = await gltfLoader.loadAsync(room.modelUrl);
+      const gltfLoadMs = roundMs(performance.now() - gltfLoadStartedAt);
       if (disposed || token !== loadToken) {
         disposeObject3D(gltf.scene);
         return;
@@ -282,13 +314,29 @@ export async function initVRViewer(container, options = {}) {
 
       const model = gltf.scene;
       model.scale.setScalar(room.scale ?? 1);
+
+      const fitStartedAt = performance.now();
       fitModelToOrigin(model);
+
+      const surfaceIndexStartedAt = performance.now();
       indexEditableSurfaces(model);
       scene.add(model);
 
       currentModel = model;
       applyRoomView(room);
-      onRoomChange(room);
+
+      emitPerformanceEvent('room-ready', {
+        roomId: room.id,
+        gltfLoadMs,
+        fitMs: roundMs(surfaceIndexStartedAt - fitStartedAt),
+        surfaceIndexMs: roundMs(performance.now() - surfaceIndexStartedAt),
+        totalMs: roundMs(performance.now() - roomLoadStartedAt),
+        surfaceCount: surfaceGroups.all.length
+      });
+
+      if (notify) {
+        onRoomChange(room);
+      }
     } catch (error) {
       console.error(`Failed to load model for room "${room.id}":`, error);
     }
@@ -301,7 +349,7 @@ export async function initVRViewer(container, options = {}) {
     renderer.render(scene, camera);
   });
 
-  await loadRoom(initialRoom);
+  await loadRoom(initialRoom, { notify: false });
 
   return {
     loadRoom,
@@ -347,6 +395,11 @@ export async function initVRViewer(container, options = {}) {
       if (environmentTexture) {
         environmentTexture.dispose();
         environmentTexture = null;
+      }
+
+      if (pmremGenerator) {
+        pmremGenerator.dispose();
+        pmremGenerator = null;
       }
 
       controls.dispose();

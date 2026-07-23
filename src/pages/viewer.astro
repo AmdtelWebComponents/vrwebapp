@@ -53,7 +53,6 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
     </div>
 
     <script>
-      import { initVRViewer } from '../lib/vrViewer.js';
       import { rooms } from '../lib/rooms.js';
       import { getLocalRoomShell, readLocalModelBlobUrl } from '../lib/localModelStore.js';
 
@@ -69,6 +68,17 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         isVRSupported: () => boolean;
         startVRSession: (onStart?: () => void, onEnd?: () => void) => Promise<void>;
         dispose: () => void;
+      };
+
+      type ViewerPerformanceEvent = {
+        phase: 'environment-ready' | 'room-ready';
+        totalMs: number;
+        pmremMs?: number;
+        roomId?: string;
+        gltfLoadMs?: number;
+        fitMs?: number;
+        surfaceIndexMs?: number;
+        surfaceCount?: number;
       };
 
       const container = document.getElementById('canvas-container') as HTMLDivElement;
@@ -148,6 +158,21 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         }
       }
 
+      function setRoomStatus(room: (typeof rooms)[number]) {
+        status.textContent = room.isMock
+          ? `${room.name} loaded (mock model)`
+          : `${room.name} loaded`;
+      }
+
+      function logViewerPerformance(event: ViewerPerformanceEvent) {
+        if (event.phase === 'environment-ready') {
+          console.info('[viewer] environment-ready', event);
+          return;
+        }
+
+        console.info('[viewer] room-ready', event);
+      }
+
       syncLocalRoomOption();
 
       const initialRoomId = getRoomFromUrl();
@@ -159,20 +184,27 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
 
       roomSelect.value = activeRoom.id;
 
+      status.textContent = 'Preparing viewer...';
+      const moduleImportStartedAt = performance.now();
+      const { initVRViewer } = await import('../lib/vrViewer.js');
+      console.info('[viewer] module-ready', {
+        moduleImportMs: Math.round((performance.now() - moduleImportStartedAt) * 10) / 10
+      });
+
       status.textContent = `Loading ${activeRoom.name}...`;
       let viewer: ViewerController;
       viewer = await initVRViewer(container, {
         initialRoom: activeRoom,
+        onPerformanceEvent: logViewerPerformance,
         onRoomChange(room: (typeof rooms)[number]) {
           activeRoom = room;
           roomSelect.value = room.id;
-          status.textContent = room.isMock
-            ? `${room.name} loaded (mock model)`
-            : `${room.name} loaded`;
+          setRoomStatus(room);
           refreshMaterialTargets(viewer);
         }
       });
 
+      setRoomStatus(activeRoom);
       refreshMaterialTargets(viewer);
 
       function getMaterialValues() {
