@@ -1,8 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const MATERIAL_PRESETS = {
   matte: { roughness: 0.9, metalness: 0 },
@@ -115,7 +112,9 @@ export async function initVRViewer(container, options = {}) {
   const {
     initialRoom,
     onRoomChange = () => {},
-    onPerformanceEvent = () => {}
+    onPerformanceEvent = () => {},
+    deferBackground = true,
+    backgroundDelayMs = 1200
   } = options;
 
   if (!initialRoom?.modelUrl) {
@@ -126,7 +125,15 @@ export async function initVRViewer(container, options = {}) {
   let currentModel = null;
   let currentRoom = null;
   let environmentTexture = null;
+  let pendingBackgroundTexture = null;
+  let backgroundApplyTimer = null;
   let pmremGenerator = null;
+  let dracoLoader = null;
+  let gltfLoader = null;
+  let gltfLoaderPromise = null;
+  let environmentLoaderPromise = null;
+  let environmentLoadStarted = false;
+  let firstRoomReady = false;
   let loadToken = 0;
   let vrSupported = false;
 
@@ -144,6 +151,124 @@ export async function initVRViewer(container, options = {}) {
 
   function emitPerformanceEvent(phase, detail = {}) {
     onPerformanceEvent({ phase, ...detail });
+  }
+
+  async function ensureModelLoader() {
+    if (gltfLoader) return;
+    if (gltfLoaderPromise) {
+      await gltfLoaderPromise;
+      return;
+    }
+
+    const loaderInitStartedAt = performance.now();
+    gltfLoaderPromise = (async () => {
+      const [{ GLTFLoader }, { DRACOLoader }] = await Promise.all([
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/loaders/DRACOLoader.js')
+      ]);
+
+      dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath('/draco/');
+
+      gltfLoader = new GLTFLoader();
+      gltfLoader.setDRACOLoader(dracoLoader);
+    })();
+
+    await gltfLoaderPromise;
+    gltfLoaderPromise = null;
+
+    emitPerformanceEvent('loader-ready', {
+      loader: 'gltf-draco',
+      totalMs: roundMs(performance.now() - loaderInitStartedAt)
+    });
+  }
+
+  function applyDeferredBackground(texture, reason = 'deferred') {
+    if (!texture || disposed) return;
+
+    if (backgroundApplyTimer) {
+      clearTimeout(backgroundApplyTimer);
+      backgroundApplyTimer = null;
+    }
+
+    if (!deferBackground) {
+      scene.background = texture;
+      emitPerformanceEvent('background-ready', {
+        totalMs: 0,
+        reason: 'immediate'
+      });
+      return;
+    }
+
+    const delayStartedAt = performance.now();
+    backgroundApplyTimer = window.setTimeout(() => {
+      if (disposed || pendingBackgroundTexture !== texture) return;
+      scene.background = texture;
+      backgroundApplyTimer = null;
+      emitPerformanceEvent('background-ready', {
+        totalMs: roundMs(performance.now() - delayStartedAt),
+        reason
+      });
+    }, Math.max(backgroundDelayMs, 0));
+  }
+
+  async function ensureEnvironmentLoader() {
+    if (environmentLoadStarted || environmentLoaderPromise) {
+      return environmentLoaderPromise;
+    }
+
+    const loaderInitStartedAt = performance.now();
+    environmentLoadStarted = true;
+
+    environmentLoaderPromise = (async () => {
+      const { HDRLoader } = await import('three/addons/loaders/HDRLoader.js');
+      emitPerformanceEvent('loader-ready', {
+        loader: 'hdr',
+        totalMs: roundMs(performance.now() - loaderInitStartedAt)
+      });
+
+      return new Promise((resolve) => {
+        const hdriLoader = new HDRLoader();
+        const environmentLoadStartedAt = performance.now();
+
+        hdriLoader.load(
+          '/hdr/autumn_hill_view_1k.hdr',
+          (texture) => {
+            const pmremStartedAt = performance.now();
+            const envMap = pmremGenerator?.fromEquirectangular(texture).texture ?? texture;
+            texture.dispose();
+
+            if (environmentTexture) {
+              environmentTexture.dispose();
+            }
+
+            environmentTexture = envMap;
+            pendingBackgroundTexture = envMap;
+            scene.environment = envMap;
+
+            emitPerformanceEvent('environment-ready', {
+              totalMs: roundMs(performance.now() - environmentLoadStartedAt),
+              pmremMs: roundMs(performance.now() - pmremStartedAt)
+            });
+
+            if (firstRoomReady) {
+              applyDeferredBackground(envMap, 'room-ready');
+            }
+
+            pmremGenerator?.dispose();
+            pmremGenerator = null;
+            resolve();
+          },
+          undefined,
+          (error) => {
+            console.error('Failed to load HDR environment:', error);
+            resolve();
+          }
+        );
+      });
+    })();
+
+    return environmentLoaderPromise;
   }
 
   const scene = new THREE.Scene();
@@ -174,42 +299,6 @@ export async function initVRViewer(container, options = {}) {
   const directional = new THREE.DirectionalLight(0xffffff, 1);
   directional.position.set(5, 10, 7.5);
   scene.add(ambient, directional);
-
-  const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath('/draco/');
-  const gltfLoader = new GLTFLoader();
-  gltfLoader.setDRACOLoader(dracoLoader);
-
-  const hdriLoader = new HDRLoader();
-  const environmentLoadStartedAt = performance.now();
-  hdriLoader.load(
-    '/hdr/autumn_hill_view_1k.hdr',
-    (texture) => {
-      const pmremStartedAt = performance.now();
-      const envMap = pmremGenerator?.fromEquirectangular(texture).texture ?? texture;
-      texture.dispose();
-
-      if (environmentTexture) {
-        environmentTexture.dispose();
-      }
-
-      environmentTexture = envMap;
-      scene.environment = envMap;
-      scene.background = envMap;
-
-      emitPerformanceEvent('environment-ready', {
-        totalMs: roundMs(performance.now() - environmentLoadStartedAt),
-        pmremMs: roundMs(performance.now() - pmremStartedAt)
-      });
-
-      pmremGenerator?.dispose();
-      pmremGenerator = null;
-    },
-    undefined,
-    (error) => {
-      console.error('Failed to load HDR environment:', error);
-    }
-  );
 
   const onSessionStart = () => {
     controls.enabled = false;
@@ -298,6 +387,7 @@ export async function initVRViewer(container, options = {}) {
     const roomLoadStartedAt = performance.now();
 
     try {
+      await ensureModelLoader();
       const gltfLoadStartedAt = performance.now();
       const gltf = await gltfLoader.loadAsync(room.modelUrl);
       const gltfLoadMs = roundMs(performance.now() - gltfLoadStartedAt);
@@ -334,6 +424,11 @@ export async function initVRViewer(container, options = {}) {
         surfaceCount: surfaceGroups.all.length
       });
 
+      firstRoomReady = true;
+      if (pendingBackgroundTexture) {
+        applyDeferredBackground(pendingBackgroundTexture, 'env-ready');
+      }
+
       if (notify) {
         onRoomChange(room);
       }
@@ -350,6 +445,16 @@ export async function initVRViewer(container, options = {}) {
   });
 
   await loadRoom(initialRoom, { notify: false });
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(() => {
+      void ensureEnvironmentLoader();
+    }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => {
+      void ensureEnvironmentLoader();
+    }, 500);
+  }
 
   return {
     loadRoom,
@@ -397,13 +502,18 @@ export async function initVRViewer(container, options = {}) {
         environmentTexture = null;
       }
 
+      if (backgroundApplyTimer) {
+        clearTimeout(backgroundApplyTimer);
+        backgroundApplyTimer = null;
+      }
+
       if (pmremGenerator) {
         pmremGenerator.dispose();
         pmremGenerator = null;
       }
 
       controls.dispose();
-      dracoLoader.dispose();
+      dracoLoader?.dispose();
       renderer.dispose();
 
       if (renderer.domElement.parentElement === container) {
