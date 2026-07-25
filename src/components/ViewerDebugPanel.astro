@@ -1,0 +1,102 @@
+---
+const { open = false } = Astro.props as {
+  open?: boolean;
+};
+---
+
+<aside id="viewer-debug" data-open={open ? 'true' : 'false'} aria-live="polite">
+  <div class="debug-head">
+    <span class="debug-title">Diagnostics</span>
+    <button id="viewer-debug-toggle" class="debug-toggle" type="button" aria-expanded={open ? 'true' : 'false'}>{open ? 'Close' : 'Open'}</button>
+  </div>
+  <div class="debug-body">
+    <div class="debug-kpis">
+      <div class="debug-kpi"><span class="debug-kpi-label">Module</span><span class="debug-kpi-value" id="kpi-module">-</span></div>
+      <div class="debug-kpi"><span class="debug-kpi-label">DRACO Loader</span><span class="debug-kpi-value" id="kpi-draco">-</span></div>
+      <div class="debug-kpi"><span class="debug-kpi-label">HDR Loader</span><span class="debug-kpi-value" id="kpi-hdr">-</span></div>
+      <div class="debug-kpi"><span class="debug-kpi-label">Room Ready</span><span class="debug-kpi-value" id="kpi-room">-</span></div>
+      <div class="debug-kpi"><span class="debug-kpi-label">Env Ready</span><span class="debug-kpi-value" id="kpi-env">-</span></div>
+      <div class="debug-kpi"><span class="debug-kpi-label">Background</span><span class="debug-kpi-value" id="kpi-bg">-</span></div>
+    </div>
+    <div class="debug-log" id="debug-log"></div>
+  </div>
+</aside>
+
+<style>
+  #viewer-debug {
+    width: 100%;
+    color: #f6f5ef;
+    padding-top: 0.1rem;
+    font: 12px/1.35 'Sora', 'Segoe UI', sans-serif;
+  }
+
+  #viewer-debug[data-open='false'] .debug-body {
+    display: none;
+  }
+
+  .debug-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .debug-title {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .debug-toggle {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+
+  .debug-kpis {
+    margin-top: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .debug-kpi {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .debug-kpi-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #cfd6df;
+  }
+
+  .debug-kpi-value {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .debug-log {
+    margin-top: 8px;
+    max-height: 130px;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 6px;
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  .debug-log-row {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 11px;
+  }
+</style>

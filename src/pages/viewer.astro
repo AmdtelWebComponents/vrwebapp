@@ -1,7 +1,8 @@
 ---
 import { rooms } from '../lib/rooms.js';
 import ViewerTopBar from '../components/ViewerTopBar.astro';
----
+import ViewerSettingsPanel from '../components/ViewerSettingsPanel.astro';
+import ViewerDebugPanel from '../components/ViewerDebugPanel.astro';
 ---
 
 <html lang="en">
@@ -37,89 +38,6 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         position: relative;
       }
 
-      #viewer-debug {
-        position: fixed;
-        right: 12px;
-        bottom: 12px;
-        width: min(340px, calc(100vw - 24px));
-        color: #f6f5ef;
-        background: rgba(10, 14, 20, 0.86);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 12px;
-        backdrop-filter: blur(6px);
-        padding: 10px;
-        font: 12px/1.35 'Sora', 'Segoe UI', sans-serif;
-        z-index: 12;
-      }
-
-      #viewer-debug[data-open='false'] .debug-body {
-        display: none;
-      }
-
-      .debug-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .debug-title {
-        font-weight: 700;
-        letter-spacing: 0.02em;
-      }
-
-      .debug-toggle {
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        background: rgba(255, 255, 255, 0.06);
-        color: inherit;
-        border-radius: 8px;
-        padding: 4px 8px;
-        cursor: pointer;
-      }
-
-      .debug-kpis {
-        margin-top: 8px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-      }
-
-      .debug-kpi {
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 6px;
-        background: rgba(255, 255, 255, 0.04);
-      }
-
-      .debug-kpi-label {
-        display: block;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #cfd6df;
-      }
-
-      .debug-kpi-value {
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .debug-log {
-        margin-top: 8px;
-        max-height: 130px;
-        overflow: auto;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 6px;
-        background: rgba(0, 0, 0, 0.2);
-      }
-
-      .debug-log-row {
-        margin: 0;
-        white-space: pre-wrap;
-        font-size: 11px;
-      }
-
       @media (max-width: 640px) {
         body {
           font-size: 15px;
@@ -129,29 +47,19 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+    <script is:inline>
+      if (new URL(window.location.href).searchParams.get('menu') === 'hidden') {
+        document.documentElement.dataset.viewerMenuHidden = 'true';
+      }
+    </script>
   </head>
   <body>
     <div id="canvas-container">
-      <ViewerTopBar rooms={rooms} />
+      <ViewerTopBar>
+        <ViewerSettingsPanel slot="menu" rooms={rooms} />
+        <ViewerDebugPanel slot="debug" />
+      </ViewerTopBar>
     </div>
-
-    <aside id="viewer-debug" data-open="false" aria-live="polite">
-      <div class="debug-head">
-        <span class="debug-title">Viewer Debug</span>
-        <button id="viewer-debug-toggle" class="debug-toggle" type="button" aria-expanded="false">Open</button>
-      </div>
-      <div class="debug-body">
-        <div class="debug-kpis">
-          <div class="debug-kpi"><span class="debug-kpi-label">Module</span><span class="debug-kpi-value" id="kpi-module">-</span></div>
-          <div class="debug-kpi"><span class="debug-kpi-label">DRACO Loader</span><span class="debug-kpi-value" id="kpi-draco">-</span></div>
-          <div class="debug-kpi"><span class="debug-kpi-label">HDR Loader</span><span class="debug-kpi-value" id="kpi-hdr">-</span></div>
-          <div class="debug-kpi"><span class="debug-kpi-label">Room Ready</span><span class="debug-kpi-value" id="kpi-room">-</span></div>
-          <div class="debug-kpi"><span class="debug-kpi-label">Env Ready</span><span class="debug-kpi-value" id="kpi-env">-</span></div>
-          <div class="debug-kpi"><span class="debug-kpi-label">Background</span><span class="debug-kpi-value" id="kpi-bg">-</span></div>
-        </div>
-        <div class="debug-log" id="debug-log"></div>
-      </div>
-    </aside>
 
     <script>
       import { rooms } from '../lib/rooms.js';
@@ -197,16 +105,16 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
       const materialReset = document.getElementById('material-reset') as HTMLButtonElement;
       const materialStatus = document.getElementById('material-status') as HTMLElement;
       const topbar = document.querySelector('.topbar') as HTMLElement;
-      const toggle = document.getElementById('topbar-toggle') as HTMLButtonElement;
-      const debugPanel = document.getElementById('viewer-debug') as HTMLElement;
-      const debugToggle = document.getElementById('viewer-debug-toggle') as HTMLButtonElement;
-      const debugLog = document.getElementById('debug-log') as HTMLElement;
-      const kpiModule = document.getElementById('kpi-module') as HTMLElement;
-      const kpiDraco = document.getElementById('kpi-draco') as HTMLElement;
-      const kpiHdr = document.getElementById('kpi-hdr') as HTMLElement;
-      const kpiRoom = document.getElementById('kpi-room') as HTMLElement;
-      const kpiEnv = document.getElementById('kpi-env') as HTMLElement;
-      const kpiBg = document.getElementById('kpi-bg') as HTMLElement;
+      const toggle = document.getElementById('topbar-toggle') as HTMLButtonElement | null;
+      const debugPanel = document.getElementById('viewer-debug') as HTMLElement | null;
+      const debugToggle = document.getElementById('viewer-debug-toggle') as HTMLButtonElement | null;
+      const debugLog = document.getElementById('debug-log') as HTMLElement | null;
+      const kpiModule = document.getElementById('kpi-module') as HTMLElement | null;
+      const kpiDraco = document.getElementById('kpi-draco') as HTMLElement | null;
+      const kpiHdr = document.getElementById('kpi-hdr') as HTMLElement | null;
+      const kpiRoom = document.getElementById('kpi-room') as HTMLElement | null;
+      const kpiEnv = document.getElementById('kpi-env') as HTMLElement | null;
+      const kpiBg = document.getElementById('kpi-bg') as HTMLElement | null;
       const localObjectUrls = new Set<string>();
 
       function toMs(value: number | undefined) {
@@ -214,6 +122,7 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
       }
 
       function addDebugLog(line: string) {
+        if (!debugLog) return;
         const row = document.createElement('p');
         row.className = 'debug-log-row';
         row.textContent = line;
@@ -224,14 +133,15 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         }
       }
 
-      debugToggle.addEventListener('click', () => {
+      debugToggle?.addEventListener('click', () => {
+        if (!debugPanel) return;
         const open = debugPanel.dataset.open === 'true';
         debugPanel.dataset.open = String(!open);
         debugToggle.setAttribute('aria-expanded', String(!open));
         debugToggle.textContent = open ? 'Open' : 'Close';
       });
 
-      toggle.addEventListener('click', () => {
+      toggle?.addEventListener('click', () => {
         const open = topbar.dataset.open === 'true';
         topbar.dataset.open = String(!open);
         toggle.setAttribute('aria-expanded', String(!open));
@@ -284,6 +194,7 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
       }
 
       function refreshMaterialTargets(viewer: ViewerController) {
+        if (!materialTarget) return;
         const summary = viewer.getEditableSurfaceSummary();
         for (const option of materialTarget.options) {
           const key = option.value as SurfaceKey;
@@ -293,6 +204,7 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
       }
 
       function setRoomStatus(room: (typeof rooms)[number]) {
+        if (!status) return;
         status.textContent = room.isMock
           ? `${room.name} loaded (mock model)`
           : `${room.name} loaded`;
@@ -300,10 +212,10 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
 
       function logViewerPerformance(event: ViewerPerformanceEvent) {
         if (event.phase === 'loader-ready') {
-          if (event.loader === 'gltf-draco') {
+          if (event.loader === 'gltf-draco' && kpiDraco) {
             kpiDraco.textContent = toMs(event.totalMs);
           }
-          if (event.loader === 'hdr') {
+          if (event.loader === 'hdr' && kpiHdr) {
             kpiHdr.textContent = toMs(event.totalMs);
           }
           addDebugLog(`loader:${event.loader} ${toMs(event.totalMs)}`);
@@ -312,20 +224,26 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         }
 
         if (event.phase === 'environment-ready') {
-          kpiEnv.textContent = `${toMs(event.totalMs)} / pmrem ${toMs(event.pmremMs)}`;
+          if (kpiEnv) {
+            kpiEnv.textContent = `${toMs(event.totalMs)} / pmrem ${toMs(event.pmremMs)}`;
+          }
           addDebugLog(`env ${toMs(event.totalMs)} pmrem ${toMs(event.pmremMs)}`);
           console.info('[viewer] environment-ready', event);
           return;
         }
 
         if (event.phase === 'background-ready') {
-          kpiBg.textContent = `${toMs(event.totalMs)} (${event.reason ?? 'n/a'})`;
+          if (kpiBg) {
+            kpiBg.textContent = `${toMs(event.totalMs)} (${event.reason ?? 'n/a'})`;
+          }
           addDebugLog(`background ${toMs(event.totalMs)} reason=${event.reason ?? 'n/a'}`);
           console.info('[viewer] background-ready', event);
           return;
         }
 
-        kpiRoom.textContent = `${toMs(event.totalMs)} (${event.surfaceCount ?? 0} surfaces)`;
+        if (kpiRoom) {
+          kpiRoom.textContent = `${toMs(event.totalMs)} (${event.surfaceCount ?? 0} surfaces)`;
+        }
         addDebugLog(
           `room ${event.roomId ?? 'unknown'} total ${toMs(event.totalMs)} gltf ${toMs(event.gltfLoadMs)} fit ${toMs(event.fitMs)} idx ${toMs(event.surfaceIndexMs)}`
         );
@@ -342,19 +260,27 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
         activeRoom = rooms[0];
       }
 
-      roomSelect.value = activeRoom.id;
+      if (roomSelect) {
+        roomSelect.value = activeRoom.id;
+      }
 
-      status.textContent = 'Preparing viewer...';
+      if (status) {
+        status.textContent = 'Preparing viewer...';
+      }
       const moduleImportStartedAt = performance.now();
       const { initVRViewer } = await import('../lib/vrViewer.js');
       const moduleImportMs = Math.round((performance.now() - moduleImportStartedAt) * 10) / 10;
-      kpiModule.textContent = `${moduleImportMs.toFixed(1)}ms`;
+      if (kpiModule) {
+        kpiModule.textContent = `${moduleImportMs.toFixed(1)}ms`;
+      }
       addDebugLog(`module ${moduleImportMs.toFixed(1)}ms`);
       console.info('[viewer] module-ready', {
         moduleImportMs
       });
 
-      status.textContent = `Loading ${activeRoom.name}...`;
+      if (status) {
+        status.textContent = `Loading ${activeRoom.name}...`;
+      }
       let viewer: ViewerController;
       viewer = await initVRViewer(container, {
         initialRoom: activeRoom,
@@ -396,21 +322,25 @@ import ViewerTopBar from '../components/ViewerTopBar.astro';
       });
 
       if (viewer.isVRSupported()) {
-        vrBtn.style.display = 'inline-block';
-        vrBtn.addEventListener('click', () => {
-          viewer.startVRSession(
-            () => { vrBtn.textContent = 'Exit VR'; },
-            () => { vrBtn.textContent = 'Enter VR'; }
-          );
-        });
+        if (vrBtn) {
+          vrBtn.style.display = 'inline-block';
+          vrBtn.addEventListener('click', () => {
+            viewer.startVRSession(
+              () => { vrBtn.textContent = 'Exit VR'; },
+              () => { vrBtn.textContent = 'Enter VR'; }
+            );
+          });
+        }
       }
 
-      roomSelect.addEventListener('change', async (event) => {
+      roomSelect?.addEventListener('change', async (event) => {
         const selectedId = (event.target as HTMLSelectElement).value;
         const room = await resolveRoomById(selectedId);
         if (!room) return;
 
-        status.textContent = `Loading ${room.name}...`;
+        if (status) {
+          status.textContent = `Loading ${room.name}...`;
+        }
         await viewer.loadRoom(room);
         writeUrl(room.id);
       });
