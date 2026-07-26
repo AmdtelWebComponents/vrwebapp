@@ -9,8 +9,16 @@ const MATERIAL_PRESETS = {
   'brushed-metal': { roughness: 0.35, metalness: 0.85 }
 };
 
+const XR_MOVE_SPEED_METERS_PER_SECOND = 1.8;
+const XR_AXIS_DEADZONE = 0.15;
+
 function clamp01(value) {
   return Math.min(Math.max(value, 0), 1);
+}
+
+function applyAxisDeadzone(value) {
+  if (Math.abs(value) < XR_AXIS_DEADZONE) return 0;
+  return value;
 }
 
 function disposeMaterial(material) {
@@ -136,6 +144,12 @@ export async function initVRViewer(container, options = {}) {
   let firstRoomReady = false;
   let loadToken = 0;
   let vrSupported = false;
+  let xrBaseReferenceSpace = null;
+
+  const xrOffset = new THREE.Vector3();
+  const xrForward = new THREE.Vector3();
+  const xrRight = new THREE.Vector3();
+  const xrMoveDelta = new THREE.Vector3();
 
   const surfaceGroups = {
     all: [],
@@ -302,10 +316,13 @@ export async function initVRViewer(container, options = {}) {
 
   const onSessionStart = () => {
     controls.enabled = false;
+    xrBaseReferenceSpace = renderer.xr.getReferenceSpace();
   };
 
   const onSessionEnd = () => {
     controls.enabled = true;
+    xrBaseReferenceSpace = null;
+    xrOffset.set(0, 0, 0);
   };
 
   renderer.xr.addEventListener('sessionstart', onSessionStart);
@@ -379,6 +396,64 @@ export async function initVRViewer(container, options = {}) {
     controls.update();
   }
 
+  function getPrimaryMovementSource(session) {
+    if (!session) return null;
+
+    for (const handedness of ['left', 'right']) {
+      const source = session.inputSources.find((inputSource) => (
+        inputSource.handedness === handedness && inputSource.gamepad?.axes?.length >= 2
+      ));
+
+      if (source) {
+        return source;
+      }
+    }
+
+    return session.inputSources.find((inputSource) => inputSource.gamepad?.axes?.length >= 2) ?? null;
+  }
+
+  function updateXRLocomotion(deltaSeconds) {
+    if (!renderer.xr.isPresenting || !xrBaseReferenceSpace) return;
+
+    const session = renderer.xr.getSession();
+    const movementSource = getPrimaryMovementSource(session);
+    const axes = movementSource?.gamepad?.axes;
+
+    if (!axes || axes.length < 2) return;
+
+    const strafeInput = applyAxisDeadzone(axes[2] ?? axes[0] ?? 0);
+    const forwardInput = applyAxisDeadzone(axes[3] ?? axes[1] ?? 0);
+
+    if (strafeInput === 0 && forwardInput === 0) return;
+
+    const xrCamera = renderer.xr.getCamera(camera);
+    xrCamera.getWorldDirection(xrForward);
+    xrForward.y = 0;
+
+    if (xrForward.lengthSq() === 0) return;
+
+    xrForward.normalize();
+    xrRight.crossVectors(xrForward, camera.up).normalize();
+
+    xrMoveDelta
+      .copy(xrRight)
+      .multiplyScalar(strafeInput)
+      .addScaledVector(xrForward, -forwardInput);
+
+    if (xrMoveDelta.lengthSq() === 0) return;
+
+    xrMoveDelta.normalize().multiplyScalar(XR_MOVE_SPEED_METERS_PER_SECOND * deltaSeconds);
+    xrOffset.add(xrMoveDelta);
+
+    const offsetTransform = new XRRigidTransform({
+      x: -xrOffset.x,
+      y: -xrOffset.y,
+      z: -xrOffset.z
+    });
+
+    renderer.xr.setReferenceSpace(xrBaseReferenceSpace.getOffsetReferenceSpace(offsetTransform));
+  }
+
   async function loadRoom(room, { notify = true } = {}) {
     if (disposed || !room?.modelUrl) return;
 
@@ -440,7 +515,10 @@ export async function initVRViewer(container, options = {}) {
   window.addEventListener('resize', resize);
   resize();
 
+  const clock = new THREE.Clock();
+
   renderer.setAnimationLoop(() => {
+    updateXRLocomotion(clock.getDelta());
     renderer.render(scene, camera);
   });
 
