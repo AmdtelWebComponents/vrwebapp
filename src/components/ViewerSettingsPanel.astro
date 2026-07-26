@@ -1,0 +1,183 @@
+---
+const { rooms = [] } = Astro.props as {
+  rooms: Array<{ id: string; name: string; isMock?: boolean }>;
+};
+---
+
+<section class="viewer-settings" aria-label="Viewer settings">
+  <div class="section-head">
+    <span class="section-title">Settings</span>
+  </div>
+
+  <div class="row row-rooms">
+    <a href="/">All Rooms</a>
+    <select id="room-select" aria-label="Room selector">
+      {rooms.map((room) => (
+        <option value={room.id}>{room.isMock ? `${room.name} (mock)` : room.name}</option>
+      ))}
+    </select>
+    <button class="action" id="vr-btn">Enter VR</button>
+    <span class="status" id="status">Loading room...</span>
+  </div>
+
+  <div class="material-panel">
+    <div class="material-header">Surface Materials</div>
+    <div class="row row-materials">
+      <select id="material-target" aria-label="Surface target">
+        <option value="all">All</option>
+        <option value="walls">Walls</option>
+        <option value="ceiling">Ceiling</option>
+        <option value="floor">Floor</option>
+        <option value="objects">Objects</option>
+      </select>
+
+      <input id="material-color" type="color" aria-label="Material color" value="#f5f5f5" />
+
+      <select id="material-preset" aria-label="Material preset">
+        <option value="custom">Custom</option>
+        <option value="matte">Matte Paint</option>
+        <option value="satin">Satin Paint</option>
+        <option value="gloss">Gloss Paint</option>
+        <option value="concrete">Concrete</option>
+        <option value="brushed-metal">Brushed Metal</option>
+      </select>
+    </div>
+
+    <div class="row row-sliders">
+      <label>
+        Roughness
+        <input id="material-roughness" type="range" min="0" max="1" step="0.05" value="0.8" />
+      </label>
+      <label>
+        Metalness
+        <input id="material-metalness" type="range" min="0" max="1" step="0.05" value="0" />
+      </label>
+      <button class="action" id="material-apply">Apply</button>
+      <button class="ghost" id="material-reset">Reset</button>
+    </div>
+
+    <span class="status" id="material-status">No material edits yet.</span>
+  </div>
+</section>
+
+<style>
+  .viewer-settings {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    color: var(--muted);
+  }
+
+  .section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
+  .row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .material-panel {
+    border-top: 1px solid var(--panel-border);
+    padding-top: 0.55rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .material-header {
+    color: var(--muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-inline: 0.15rem;
+  }
+
+  .viewer-settings a,
+  .viewer-settings select,
+  .viewer-settings button.action,
+  .viewer-settings button.ghost,
+  .viewer-settings input[type='color'] {
+    border: 0;
+    border-radius: 999px;
+    font: inherit;
+    line-height: 1;
+  }
+
+  .viewer-settings a {
+    padding: 0.6rem 0.8rem;
+    background: #2a3442;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .viewer-settings select {
+    min-width: 150px;
+    padding: 0.62rem 0.8rem;
+    background: #f7f0db;
+    color: #1a1f27;
+  }
+
+  .viewer-settings input[type='color'] {
+    width: 44px;
+    min-height: 34px;
+    padding: 0.2rem;
+    background: #f7f0db;
+  }
+
+  .viewer-settings input[type='range'] {
+    accent-color: var(--action);
+  }
+
+  .status {
+    color: var(--muted);
+    font-size: 0.86rem;
+    padding-inline: 0.35rem;
+  }
+
+  button.action,
+  button.ghost {
+    display: inline-block;
+    padding: 0.6rem 0.8rem;
+    cursor: pointer;
+  }
+
+  button.action {
+    background: var(--action);
+    color: #fff;
+  }
+
+  button.ghost {
+    background: #2a3442;
+    color: var(--text);
+  }
+
+  @media (max-width: 640px) {
+    .viewer-settings select {
+      min-width: 120px;
+      flex: 1;
+    }
+
+    .row-sliders {
+      align-items: flex-start;
+    }
+  }
+</style>
