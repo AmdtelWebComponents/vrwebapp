@@ -1,5 +1,11 @@
 # VR Web App Guidelines
 
+## New Chat Bootstrap
+- Start by reading `.github/project-context.md` for the current project state, active constraints, and implementation priorities.
+- Then confirm commands and user-facing behavior in `README.md`.
+- If the task touches viewer runtime behavior, inspect `src/pages/viewer.astro` and `src/lib/vrViewer.js` before proposing changes.
+- Keep `.github/project-context.md` updated when architecture, workflow, or feature status changes materially.
+
 ## Code Style
 - Keep changes minimal, fast, and maintainable. Avoid broad refactors unless requested.
 - Use `pnpm` for all package/script operations.
@@ -11,7 +17,7 @@
 - Astro is the app shell; keep page files thin and orchestration-focused.
 - `src/pages/index.astro` is the room-selector home page (`/`).
 - `src/pages/viewer.astro` is the viewer route (`/viewer?room=<id>`) and bootstraps the VRViewer.
-- `src/components/VRViewer.js` owns Three.js/WebXR setup, interaction mode switching, and lifecycle.
+- `src/lib/vrViewer.js` owns Three.js/WebXR setup, interaction mode switching, and lifecycle.
 - `src/lib/rooms.js` is the single source of truth for the room catalogue.
 - Put reusable pure logic in `src/lib/` when functionality grows beyond one viewer module.
 - Keep assets in `public/models/`, `public/textures/`, `public/hdr/`, and Draco decoders in `public/draco/`.
@@ -38,3 +44,4 @@
 ## Docs
 - See `README.md` for base Astro workflow commands.
 - See `public/draco/README.md` for Draco decoder/background details.
+- See `.github/project-context.md` for current architecture notes, known limitations, and work-in-progress context for new chats.
