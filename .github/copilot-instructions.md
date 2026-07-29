@@ -15,6 +15,7 @@
 
 ## Architecture
 - Astro is the app shell; keep page files thin and orchestration-focused.
+- Make full use of Astro components and partial hydration for performance. Optimize components for interoperability with Three.js/WebXR.
 - `src/pages/index.astro` is the room-selector home page (`/`).
 - `src/pages/viewer.astro` is the viewer route (`/viewer?room=<id>`) and bootstraps the VRViewer.
 - `src/lib/vrViewer.js` owns Three.js/WebXR setup, interaction mode switching, and lifecycle.
