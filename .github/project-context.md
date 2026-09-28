@@ -74,5 +74,5 @@ Primary route: /viewer?room=<id>.
 
 ## Last Confirmed Baseline
 - Branch: main
-- Baseline commit used to stabilize work: 009e657 (Add VR controller locomotion)
+- Baseline commit used to stabilize work: 62e71be (Add full room GLB set, fix Blender naming inconsistencies, update docs)
 - Baseline validation: pnpm build passes
