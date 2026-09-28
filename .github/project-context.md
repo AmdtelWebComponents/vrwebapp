@@ -23,7 +23,27 @@ Primary route: /viewer?room=<id>.
 - Dev: pnpm dev
 - Build: pnpm build
 - Preview: pnpm preview
+- Model export: pnpm models:export
+- Quest export: pnpm models:export:quest
+- Model audit: pnpm models:audit
+- Strict model audit: pnpm models:audit:strict
 - Most reliable validation command: pnpm build
+
+## Model Export Workflow
+- Source blend: blender/kellyburn_NewPlans_draft.blend
+- Export script: blender/export_rooms.py
+- Export output: one GLB per modeled room collection in public/models/ (Kitchen, Lounge, Shower, Utility, Family_Dining, Office1, Hallway_Stairs, Plant, Vestibule, Coats, Bedroom_1-5, First_Floor_Hall, Bathroom, Exterior_Walls, Exterior_Chimneys).
+- Export behavior: collection-driven export with Draco compression; helper meshes (CTRL_* and *_Hole*) are excluded. The Assets collection (reference plans/elevations) is intentionally excluded from export. Collections with no exportable mesh geometry (e.g. Open Passages, which only holds a boolean-cutter helper) are also excluded.
+- Profiles:
+  - standard: full room detail used for desktop/general preview.
+  - quest: filters high-cost handle meshes to reduce triangle count and improve headset performance.
+
+## Naming Conventions (Blender source)
+- Each room collection has one base "Room_<Name>" mesh, e.g. Room_Kitchen, Room_Shower, Room_Hallway-Stairs.
+- Use underscores between tokens; hyphens are allowed within a token for intentional compound room names (Family-Dining, Hallway-Stairs, En-Suite).
+- Avoid dot-separated names (e.g. `Room.Shower`); Blender's own numeric duplicate suffixes (`.001`) are still tolerated.
+- `pnpm models:audit` reports any collection/object naming that doesn't match this convention under `AUDIT ROOM_COLLECTIONS_NAMING`.
+
 
 ## Validation and Tooling Constraints
 - pnpm astro check may be unreliable here due to TypeScript API version mismatch.

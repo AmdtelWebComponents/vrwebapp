@@ -6,7 +6,11 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "models:export": "blender -b blender/kellyburn_NewPlans_draft.blend -P blender/export_rooms.py -- --outdir public/models --profile standard",
+    "models:export:quest": "blender -b blender/kellyburn_NewPlans_draft.blend -P blender/export_rooms.py -- --outdir public/models --profile quest",
+    "models:audit": "blender -b blender/kellyburn_NewPlans_draft.blend -P blender/export_rooms.py -- --profile standard --audit-only",
+    "models:audit:strict": "blender -b blender/kellyburn_NewPlans_draft.blend -P blender/export_rooms.py -- --profile standard --strict-audit --audit-only"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",

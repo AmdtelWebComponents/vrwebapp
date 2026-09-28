@@ -41,6 +41,10 @@ All commands run from the project root with `pnpm`:
  | `pnpm build`       | Production build to `./dist/`               |
  | `pnpm preview`     | Preview the production build locally        |
 | `pnpm exec astro --help` | Run the local Astro CLI               |
+| `pnpm models:export` | Export one GLB per modeled room collection from `blender/kellyburn_NewPlans_draft.blend` into `public/models/` |
+| `pnpm models:export:quest` | Export lighter Quest-focused GLBs (filters high-cost handle meshes) |
+| `pnpm models:audit` | Print Blender scene export warnings without writing files |
+| `pnpm models:audit:strict` | Fail when the audit reports any issue |
 
 ## Local Astro CLI
 
@@ -98,6 +102,38 @@ fuser -k 4321/tcp
  ```
  
  Export `.glb` with Draco compression from Blender. Keep scale consistent with floor-level VR (1 unit = 1 metre).
+
+For repeatable exports in this repo, use:
+
+```bash
+pnpm models:export
+```
+
+For Quest-focused exports with reduced geometry load:
+
+```bash
+pnpm models:export:quest
+```
+
+To audit the source blend for common runtime/export issues:
+
+```bash
+pnpm models:audit
+```
+
+To fail the command on any audit warning:
+
+```bash
+pnpm models:audit:strict
+```
+
+This runs the Blender script at `blender/export_rooms.py`, exporting one GLB per modeled room collection and skipping helper/control meshes used only during modeling. The `Assets` collection (reference plans/elevations) is intentionally excluded from export.
+
+### Blender Naming Convention
+
+- Each room collection has one base `Room_<Name>` mesh (e.g. `Room_Kitchen`, `Room_Shower`, `Room_Hallway-Stairs`).
+- Use underscores between tokens; hyphens are allowed within a token for intentional compound room names (`Family-Dining`, `Hallway-Stairs`, `En-Suite`).
+- Avoid dot-separated names (e.g. `Room.Shower`); run `pnpm models:audit` after renaming objects in Blender to confirm everything matches.
 
 Local models can also be loaded into the viewer at runtime through the local model flow backed by `src/lib/localModelStore.js`.
  
